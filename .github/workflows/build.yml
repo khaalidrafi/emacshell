@@ -77,17 +77,33 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install SDK components
+      # The hosted runners ship a preinstalled Android SDK at
+      # ANDROID_HOME; android-actions/setup-android@v3 is currently
+      # broken on them (its `sdkmanager --install tools
+      # platform-tools` update pass exits 1 at "Computing updates"),
+      # so use the preinstalled SDK directly and install ONLY the
+      # pinned components that are missing.
+      - name: Install SDK components (preinstalled SDK, gaps only)
         run: |
+          set -euxo pipefail
+          echo "ANDROID_HOME=${ANDROID_HOME}"
+          sdkmanager --version
           yes | sdkmanager --licenses > /dev/null || true
-          sdkmanager --install \
-            "platforms;android-35" \
-            "build-tools;35.0.0" \
-            "ndk;27.0.12077973" \
-            "platform-tools"
+          install=""
+          [ -d "${ANDROID_HOME}/platforms/android-35" ] \
+            || install="${install} platforms;android-35"
+          [ -d "${ANDROID_HOME}/build-tools/35.0.0" ] \
+            || install="${install} build-tools;35.0.0"
+          [ -d "${ANDROID_HOME}/ndk/27.0.12077973" ] \
+            || install="${install} ndk;27.0.12077973"
+          [ -d "${ANDROID_HOME}/platform-tools" ] \
+            || install="${install} platform-tools"
+          if [ -n "${install}" ]; then
+            # shellcheck disable=SC2086
+            sdkmanager --install ${install}
+          else
+            echo "all pinned SDK components are preinstalled"
+          fi
 
       - name: Verify the GNU Emacs APK signature (supply chain)
         run: |
