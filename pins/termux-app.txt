@@ -1,0 +1,11 @@
+# Termux app source pin.
+#
+# Vendored into this repository by scripts/sync-termux.sh, which applies
+# patches/termux/*.patch on top.  The vendored (already patched) result is
+# committed under app/, termux-shared/, terminal-emulator/ and terminal-view/
+# so a fresh clone builds without network access; re-run the sync script
+# only when moving to a newer tag.
+
+tag=v0.118.3
+commit=5b657c6adf4304e5198951ce815fe0205dcac29c
+repo=https://github.com/termux/termux-app

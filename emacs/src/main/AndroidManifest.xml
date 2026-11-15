@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Emacshell :emacs library manifest.
+
+     Derived from GNU Emacs 31.1 java/AndroidManifest.xml.in with these
+     deliberate changes for the emacshell re-packaging:
+
+       - No <application> attributes.  The app module owns the application
+         element (EmacshellApplication, label, icon, theme); merging GNU's
+         application attributes would need tools:replace churn for no
+         benefit.  GNU's per-activity theming is preserved by setting
+         android:theme="@style/EmacsStyle" on the Emacs activities here.
+       - EmacsActivity keeps the single MAIN/LAUNCHER intent filter:
+         it is the ONE launcher of both emacshell variants.
+       - EmacsLauncherPreferencesActivity (a second LAUNCHER activity GNU
+         ships for Android <= 6) is dropped: emacshell minSdk is 24, so
+         the "application preferences" entry in Settings always exists.
+       - The documents provider authority and its URIs are derived from
+         the actual applicationId via the ${EMACSHELL_APPLICATION_ID}
+         manifest placeholder (provided by :app per flavor).  This keeps
+         emacshell installable side by side with upstream GNU Emacs,
+         whose provider authority is the literal "org.gnu.emacs".
+       - uses-permissions travel with the components that need them.
+       - versionCode/versionName/uses-sdk are app-module concerns.
+
+     The receiver action literal "org.gnu.emacs.DISMISSED" matches the
+     EmacsDesktopNotification.NOTIFICATION_DISMISSED constant on purpose:
+     broadcasts are package-scoped (setPackage + exported=false), so the
+     string is not a global namespace and staying identical to upstream
+     keeps the Java patch surface minimal. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- GNU Emacs requests the full permission set so that arbitrary
+         lisp packages work unimpeded; see the upstream manifest for the
+         original per-permission commentary. -->
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <uses-permission android:name="android.permission.WRITE_CONTACTS" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.SET_WALLPAPER" />
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
+    <uses-permission android:name="android.permission.WRITE_CALENDAR" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.SEND_SMS" />
+    <uses-permission android:name="android.permission.RECEIVE_SMS" />
+    <uses-permission android:name="android.permission.RECEIVE_MMS" />
+    <uses-permission android:name="android.permission.WRITE_SMS" />
+    <uses-permission android:name="android.permission.READ_SMS" />
+    <uses-permission android:name="android.permission.NFC" />
+    <uses-permission android:name="android.permission.TRANSMIT_IR" />
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+
+    <application>
+
+        <activity
+            android:name="org.gnu.emacs.EmacsActivity"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|locale|fontScale"
+            android:exported="true"
+            android:launchMode="singleInstance"
+            android:taskAffinity="emacs.primary_frame"
+            android:theme="@style/EmacsStyle"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name="org.gnu.emacs.EmacsOpenActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:taskAffinity="emacs.open_dialog"
+            android:theme="@style/EmacsStyle">
+
+            <!-- Allow Emacs to open all kinds of files known to Android. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <action android:name="android.intent.action.EDIT" />
+                <action android:name="android.intent.action.PICK" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" android:scheme="file" />
+                <data android:mimeType="*/*" android:scheme="content" />
+            </intent-filter>
+
+            <!-- Facilitate opening org-protocol:// URLs as well, the same
+                 way emacsclient.desktop does. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="org-protocol" />
+            </intent-filter>
+
+            <!-- And also mailto links. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="mailto" />
+            </intent-filter>
+
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <action android:name="android.intent.action.SENDTO" />
+                <data android:scheme="mailto" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name="org.gnu.emacs.EmacsMultitaskActivity"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|locale|fontScale"
+            android:exported="true"
+            android:maxRecents="50"
+            android:taskAffinity="emacs.secondary_frame"
+            android:theme="@style/EmacsStyle"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
+            android:autoRemoveFromRecents="true"
+            android:exported="true"
+            android:label="Emacs options"
+            android:name="org.gnu.emacs.EmacsPreferencesActivity"
+            android:theme="@style/EmacsStyle">
+            <intent-filter>
+                <action android:name="android.intent.action.APPLICATION_PREFERENCES" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <provider
+            android:name="org.gnu.emacs.EmacsDocumentsProvider"
+            android:authorities="${EMACSHELL_APPLICATION_ID}"
+            android:exported="true"
+            android:grantUriPermissions="true"
+            android:permission="android.permission.MANAGE_DOCUMENTS">
+            <intent-filter>
+                <action android:name="android.content.action.DOCUMENTS_PROVIDER" />
+            </intent-filter>
+        </provider>
+
+        <receiver
+            android:name="org.gnu.emacs.EmacsDesktopNotification$CancellationReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="org.gnu.emacs.DISMISSED" />
+            </intent-filter>
+        </receiver>
+
+        <service
+            android:directBootAware="false"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="specialUse"
+            android:label="GNU Emacs service"
+            android:name="org.gnu.emacs.EmacsService" />
+
+    </application>
+
+</manifest>

@@ -1,0 +1,32 @@
+// :terminal-view -- vendored terminal-view from termux-app v0.118.3.
+// Sources are copied in by scripts/sync-termux.sh; no flavor-specific
+// behavior, hence no flavor dimension.
+
+plugins {
+    id 'com.android.library'
+}
+
+android {
+    namespace 'com.termux.view'
+    compileSdk project.properties.compileSdkVersion.toInteger()
+
+    defaultConfig {
+        minSdk project.properties.minSdkVersion.toInteger()
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+}
+
+dependencies {
+    api 'androidx.annotation:annotation:1.3.0'
+    api project(':terminal-emulator')
+}

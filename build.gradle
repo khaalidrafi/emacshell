@@ -1,0 +1,15 @@
+// Emacshell root build file.
+//
+// Module map (see DESIGN.org for the full architecture):
+//   :app              application module; vendored Termux app sources +
+//                     our EmacshellApplication; flavors: termux | distro
+//   :emacs            Android library wrapping the GNU Emacs Java layer,
+//                     repackaged GNU prebuilt libs and assets
+//   :termux-shared    vendored termux-shared (flavor-aware package name)
+//   :terminal-emulator, :terminal-view   vendored Termux terminal stack
+
+plugins {
+    // AGP 8.7.3: requires Gradle 8.9+ (we pin 8.14.3) and JDK 17.
+    id 'com.android.application' version '8.7.3' apply false
+    id 'com.android.library' version '8.7.3' apply false
+}

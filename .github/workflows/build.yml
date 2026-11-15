@@ -1,0 +1,212 @@
+# Build workflow: verify the repo, verify the GNU Emacs APK signature,
+# unpack its contents, and assemble the emacshell APKs.
+#
+# Two flavors (termux / distro) are built on every push.  The custom
+# bootstrap pins start life as PLACEHOLDER (see pins/bootstrap-README.md);
+# until they are filled in, the assemble step is SKIPPED with a loud
+# warning instead of producing an APK with an unusable prefix.  A
+# wrong-prefix APK must never exist, so that state is preferred over a
+# red build.
+#
+# Signing: when the EMACSHELL_KEYSTORE_B64 / EMACSHELL_KEYSTORE_PASSWORD
+# secrets are configured, the APK is signed with apksigner; otherwise
+# the unsigned APK is uploaded with a warning (see SECURITY.md for the
+# key handling rules -- the keystore never lives in this repository).
+
+name: build
+
+on:
+  push:
+    branches: [ai/main, main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      bootstrap_run_id:
+        description: 'Run id of a completed "bootstrap" workflow whose artifacts to use'
+        required: false
+        default: ''
+
+permissions:
+  actions: read   # download-artifact from another workflow run
+  contents: read
+
+env:
+  # GNU mirror serving /gnu/emacs/android/ (official mirror list:
+  # https://www.gnu.org/prep/ftp.html).  Overridable for forks.
+  GNU_MIRROR: https://mirrors.kernel.org/gnu/emacs/android
+
+jobs:
+  verify:
+    name: repo consistency checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: scripts/check.sh
+        run: scripts/check.sh
+
+  build:
+    name: build (${{ matrix.flavor }}, api${{ matrix.gnu_api }})
+    needs: verify
+    # ubuntu-latest migrated to 26.04 (Oct 2026) where
+    # android-actions/setup-android@v3's sdkmanager call dies with
+    # exit 1 while "Computing updates"; 24.04 is the proven image.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        # Single-ABI (arm64-v8a) by design; x86_64 joins when the GNU
+        # APK pin matrix in pins/gnu-apk.sha256 grows.
+        #
+        # Two GNU APK api levels (see pins/gnu-apk.sha256): the number
+        # in the GNU file name is the MINIMUM API the package supports,
+        # so Android 10+ takes api 29 (default) and Android 9 or older
+        # takes api 21.  Both are built on every push; minSdk,
+        # versionCode and the APK name follow the api level.
+        flavor: [termux, distro]
+        gnu_api: [29, 21]
+    env:
+      FLAVOR: ${{ matrix.flavor }}
+      GNU_API: ${{ matrix.gnu_api }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install SDK components
+        run: |
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager --install \
+            "platforms;android-35" \
+            "build-tools;35.0.0" \
+            "ndk;27.0.12077973" \
+            "platform-tools"
+
+      - name: Verify the GNU Emacs APK signature (supply chain)
+        run: |
+          set -euxo pipefail
+          mkdir -p build/downloads
+          apk="build/downloads/emacs-31.1-${GNU_API}-arm64-v8a.apk"
+          curl -fSL --retry 3 -o "${apk}" \
+            "${GNU_MIRROR}/emacs-31.1-${GNU_API}-arm64-v8a.apk"
+          curl -fSL --retry 3 -o "${apk}.sig" \
+            "${GNU_MIRROR}/emacs-31.1-${GNU_API}-arm64-v8a.apk.sig"
+          # Prefer the committed copy of the release key; fall back to
+          # fetching it from ftp.gnu.org.  If BOTH fail the step fails:
+          # an unverified Emacs binary must never enter an APK.
+          if ! gpg --import keys/emacs-release-key.asc; then
+            echo "::warning::committed key failed to import; fetching from ftp.gnu.org"
+            curl -fSL --retry 3 \
+              https://ftp.gnu.org/gnu/emacs/emacs-release-key.asc | gpg --import
+          fi
+          gpg --verify "${apk}.sig" "${apk}"
+
+      - name: Unpack the GNU APK (sha256-pinned)
+        run: scripts/extract-gnu-apk.sh "${GNU_API}" arm64-v8a
+
+      - name: Prepare pinned binary inputs (bootstrap / Alpine rootfs)
+        id: pins
+        env:
+          BOOTSTRAP_RUN_ID: ${{ inputs.bootstrap_run_id }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          pin="pins/bootstrap-${FLAVOR}.sha256"
+          value="$(grep -vE '^[[:space:]]*(#|$)' "${pin}" | head -n1 | tr -d '[:space:]')"
+          echo "bootstrap pin for '${FLAVOR}': ${value}"
+
+          fetch_bootstrap_artifact() {
+            gh run download "${BOOTSTRAP_RUN_ID}" \
+              --name "bootstrap-${FLAVOR}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --dir "bootstrap/${FLAVOR}"
+          }
+
+          if [ "${value}" = "PLACEHOLDER" ]; then
+            if [ -n "${BOOTSTRAP_RUN_ID}" ]; then
+              fetch_bootstrap_artifact
+              echo "::error::A bootstrap artifact was provided, but ${pin} is still a PLACEHOLDER. Review the artifact's sha256 and update the pin deliberately (pins/bootstrap-README.md); refusing to build unpinned."
+              exit 1
+            fi
+            echo "ready=false" >> "${GITHUB_OUTPUT}"
+            {
+              echo "### ${FLAVOR}: assemble skipped"
+              echo ""
+              echo "\`pins/bootstrap-${FLAVOR}.sha256\` is still a PLACEHOLDER, so no APK"
+              echo "was produced: embedding the official (com.termux-prefixed) bootstrap"
+              echo "would ship a shell that cannot run. Run the \`bootstrap\` workflow,"
+              echo "review the zip, and fill in the pin."
+            } >> "${GITHUB_STEP_SUMMARY}"
+            exit 0
+          fi
+
+          if [ ! -f "bootstrap/${FLAVOR}/bootstrap-aarch64.zip" ]; then
+            if [ -n "${BOOTSTRAP_RUN_ID}" ]; then
+              fetch_bootstrap_artifact
+            else
+              echo "ready=false" >> "${GITHUB_OUTPUT}"
+              {
+                echo "### ${FLAVOR}: assemble skipped"
+                echo ""
+                echo "The bootstrap pin is set but \`bootstrap/${FLAVOR}/bootstrap-aarch64.zip\`"
+                echo "is absent. Re-run this workflow with bootstrap_run_id pointing at a"
+                echo "completed \`bootstrap\` workflow run."
+              } >> "${GITHUB_STEP_SUMMARY}"
+              exit 0
+            fi
+          fi
+
+          if [ "${FLAVOR}" = "distro" ]; then
+            scripts/prepare-distro-rootfs.sh
+          fi
+          echo "ready=true" >> "${GITHUB_OUTPUT}"
+
+      - name: Assemble APK
+        id: assemble
+        if: steps.pins.outputs.ready == 'true'
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          cap="$(printf '%s' "${FLAVOR}" | sed 's/^./\U&/')"
+          ./gradlew --no-daemon --stacktrace \
+            "-PgnuApkApi=${GNU_API}" "assemble${cap}Release"
+
+      - name: Sign the APK (or upload unsigned, with a warning)
+        if: steps.assemble.outcome == 'success'
+        env:
+          KEYSTORE_B64: ${{ secrets.EMACSHELL_KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.EMACSHELL_KEYSTORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          apk="$(find app/build/outputs/apk -name '*.apk' | head -n1)"
+          if [ -z "${apk}" ]; then
+            echo "::error::assemble reported success but no APK was found"
+            exit 1
+          fi
+          if [ -z "${KEYSTORE_B64}" ]; then
+            echo "::warning::EMACSHELL_KEYSTORE_B64 is not configured; the artifact is UNSIGNED. Install it on device with 'adb install' or configure signing secrets (SECURITY.md)."
+            exit 0
+          fi
+          printf '%s' "${KEYSTORE_B64}" | base64 --decode > /tmp/emacshell.jks
+          "${ANDROID_HOME}/build-tools/35.0.0/apksigner" sign \
+            --ks /tmp/emacshell.jks \
+            --ks-pass "pass:${KEYSTORE_PASSWORD}" \
+            "${apk}"
+          rm -f /tmp/emacshell.jks
+          "${ANDROID_HOME}/build-tools/35.0.0/apksigner" verify --print-certs "${apk}"
+
+      - name: Upload APK artifact
+        if: steps.assemble.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: emacshell-${{ matrix.flavor }}-api${{ matrix.gnu_api }}-apk
+          path: app/build/outputs/apk/**/*.apk
+          if-no-files-found: error
+          retention-days: 14

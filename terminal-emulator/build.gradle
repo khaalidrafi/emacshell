@@ -1,0 +1,48 @@
+// :terminal-emulator -- vendored terminal-emulator from termux-app
+// v0.118.3 (native C terminal emulator via ndkBuild).  Sources are
+// copied in by scripts/sync-termux.sh; the module has no flavor-specific
+// behavior, so it carries no flavor dimension.
+
+plugins {
+    id 'com.android.library'
+}
+
+android {
+    namespace 'com.termux.terminal'
+    compileSdk project.properties.compileSdkVersion.toInteger()
+    ndkVersion project.properties.ndkVersion
+
+    defaultConfig {
+        minSdk project.properties.minSdkVersion.toInteger()
+
+        externalNativeBuild {
+            ndkBuild {
+                cFlags '-std=c11', '-Wall', '-Wextra', '-Werror', '-Os',
+                       '-fno-stack-protector', '-Wl,--gc-sections'
+            }
+        }
+
+        ndk {
+            // Extend with 'x86_64' when the GNU APK matrix grows beyond
+            // arm64-v8a (the GNU mirror also publishes x86_64 builds).
+            abiFilters 'arm64-v8a'
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+    }
+
+    externalNativeBuild {
+        ndkBuild {
+            path 'src/main/jni/Android.mk'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+}

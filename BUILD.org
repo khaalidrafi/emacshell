@@ -1,0 +1,201 @@
+#+TITLE: emacshell build system
+#+OPTIONS: toc:2
+
+This document explains HOW emacshell is built and WHY each step exists.
+DESIGN.org covers the runtime architecture; SECURITY.md covers the
+supply chain.
+
+* Toolchain
+
+| Component | Pin | Where |
+|-----------+-----+-------|
+| Gradle | 8.14.3 | =gradle/wrapper/gradle-wrapper.properties= |
+| Android Gradle Plugin | 8.7.3 | root =build.gradle= |
+| JDK | 17 (temurin in CI) | =build.yml= |
+| compileSdk | 35 | =gradle.properties= |
+| targetSdk | 28 | =gradle.properties= (see REVIEW.org) |
+| minSdk | 24 | =gradle.properties= |
+| NDK | 27.0.12077973 | =gradle.properties= (only for the tiny bootstrap glue + terminal-emulator) |
+
+The wrapper jar/scripts were copied from the termux-app checkout (they
+are version-agnostic); regenerate with =gradle wrapper --gradle-version
+8.14.3= if Gradle ever refuses to run them.
+
+Upstream termux-app v0.118.3 built with Gradle 7.2 / AGP 4.2.2.  We
+import their module *sources* into a new AGP 8 project instead of
+migrating their build files: termux-app master has since moved to AGP
+8.x itself, which validates that the sources build under it.  The
+upstream Gradle files, dev keystore and module manifests are
+deliberately NOT vendored (AGP 8 rejects their =package=-in-manifest
+style; namespaces live in our =build.gradle= files).
+
+* Modules
+
+#+BEGIN_EXAMPLE
+:app                application; flavors termux|distro; namespace com.termux
+:emacs              library; namespace org.gnu.emacs; patched GNU java + res
+                    (jniLibs/ and assets/ are GENERATED from the GNU APK)
+:termux-shared      library; flavor-aware (BuildConfig.EMACSHELL_PACKAGE_NAME)
+:terminal-emulator  library; native ndkBuild module
+:terminal-view      library
+#+END_EXAMPLE
+
+=app= has =namespace com.termux= but a different =applicationId= (AGP
+allows this) because the vendored sources import =com.termux.R=.  The
+flavor-dependent bits:
+
+- =app=: per-flavor =applicationId= + manifest placeholders
+  (=${TERMUX_PACKAGE_NAME}=, =${EMACSHELL_APPLICATION_ID}=), per-flavor
+  =init.el= asset and label;
+- =termux-shared= / =emacs=: a per-flavor
+  =BuildConfig.EMACSHELL_PACKAGE_NAME= constant (for
+  =TermuxConstants.TERMUX_PACKAGE_NAME= and for
+  =EmacsNoninteractive=, which resolves the package before any Android
+  Context exists).
+
+* Pipeline
+
+The build is a sequence of small, individually verifiable steps.  All
+network fetches are pinned; see SECURITY.md.
+
+** 1. Vendoring: =scripts/sync-termux.sh=
+
+Clones termux-app at the commit pinned in =pins/termux-app.txt=
+(tag =v0.118.3=), copies the four modules' sources into this repo,
+applies =patches/termux/*.patch= (no fuzz; a failing patch aborts the
+sync) and sanity-checks the result.  The vendored tree is COMMITTED, so
+fresh clones build without network access; re-run the script only when
+moving to a newer upstream tag.
+
+The patches: (1) manifest rework (no =sharedUserId=, no Termux
+launcher, our Application class, AGP-8-clean), (2) TermuxConstants
+package name from BuildConfig, (3) TermuxInstaller opened to public.
+
+** 2. Emacs Java patching: =scripts/patch-emacs-java.py=
+
+Copies the pristine =java/= tree from the Emacs 31.1 source tarball
+into =emacs/src/main/= and applies an exact, asserted series of string
+replacements that replace the hard-coded ="org.gnu.emacs"= package
+lookups with =getPackageName()= (or the BuildConfig constant where no
+Context exists).  Every replacement must hit its expected count or the
+script fails; =--check= verifies the committed tree is in the patched
+state (wired into =scripts/check.sh=).  Idempotent by construction:
+the copy always restarts from the pristine source.
+
+** 3. GNU APK extraction: =scripts/extract-gnu-apk.sh=
+
+Downloads =emacs-31.1-<api>-<abi>.apk= from a GNU mirror, verifies the
+sha256 against =pins/gnu-apk.sha256=, then unpacks:
+
+- =lib/<abi>/*.so= -> =emacs/src/main/jniLibs/<abi>/=
+- =assets/*=       -> =emacs/src/main/assets/= (lisp, etc, leim, the
+  pre-serialized =directory-tree= the C runtime walks)
+
+at exactly the APK-internal paths Emacs's C code expects.  =res/= and
+=classes.dex= from the GNU APK are ignored: the Java layer is rebuilt
+from source (step 2) and the resource set comes from the tarball's
+=java/res=, because compiled binary XML cannot be re-consumed by
+Gradle.  These directories are gitignored; they are generated, never
+committed.
+
+GPG verification of the APK happens in CI (the detached =.sig= against
+=keys/emacs-release-key.asc=); the local script pins by sha256.
+
+** 4. Custom-prefix bootstrap: =scripts/build-bootstrap.sh=
+
+The one step that must exist for the project to work at all.  Termux
+packages hardcode =/data/data/com.termux/files/usr=; emacshell lives
+at a different path, so the official bootstrap installs binaries that
+all point into another app's data directory.  The termux-packages
+maintainers' sanctioned fix (issue #24396) is building the bootstrap
+with =TERMUX_APP_PACKAGE=<applicationId>=, which is what this script
+does in their Docker builder:
+
+#+BEGIN_EXAMPLE
+TERMUX_DOCKER_EXEC_EXTRA_ARGS="--env TERMUX_APP_PACKAGE=$app_id" \
+  ./scripts/run-docker.sh ./scripts/build-bootstraps.sh \
+      --architectures aarch64 [--add proot --add proot-distro]
+#+END_EXAMPLE
+
+The distro flavor's bootstrap adds =proot= and =proot-distro= so the
+first =M-x emacshell-distro-login= needs no network round-trip.
+
+Output lands in =bootstrap/<flavor>/bootstrap-aarch64.zip= and its
+sha256 is then written into =pins/bootstrap-<flavor>.sha256= BY HAND
+(pins/bootstrap-README.md documents the ceremony).  The Gradle build
+re-verifies the pin and copies the zip into =app/src/main/cpp/=, where
+the vendored ndkBuild glue =.incbin=s it into =libtermux-bootstrap.so=;
+=TermuxInstaller= extracts it to =$PREFIX= on first boot.
+
+Until the pin is real, =assemble<Flavor>Release= FAILS with
+instructions (and CI skips assembly with a loud summary instead).  A
+wrong-prefix APK can never be produced by accident.
+
+** 5. Alpine rootfs: =scripts/prepare-distro-rootfs.sh= (distro only)
+
+Fetches the exact minirootfs named in
+=pins/alpine-rootfs-aarch64.sha256= (Alpine v3.22, aarch64), verifies
+the sha256, cross-checks it against the =.sha256= file Alpine
+publishes beside the tarball, and leaves it in =distro-assets/=.  The
+Gradle build re-verifies the pin and installs it as the
+=emacshell/alpine-rootfs.tar.gz= flavor asset;
+=EmacshellApplication= unpacks it into
+=$PREFIX/var/lib/proot-distro/installed-rootfs/alpine= after the
+bootstrap (see DESIGN.org).
+
+** 6. Assembly
+
+#+BEGIN_EXAMPLE
+./gradlew assembleTermuxRelease   # app/build/outputs/apk/termux/release/
+./gradlew assembleDistroRelease
+#+END_EXAMPLE
+
+Signing happens in CI with =apksigner= and repository secrets (never a
+committed keystore); unsigned artifacts are uploaded with a warning
+when the secrets are absent.
+
+* API-level flavors of the GNU APK
+
+The GNU mirror publishes Emacs APKs built for API 21, 29 and 35.  The
+number is the *minimum* API level the package is configured for (GNU
+announcement, Aug 2026: pick "the nearest API level not exceeding that
+of the operating system").  emacshell pins BOTH arm64 variants:
+
+- =31.1-29= (default, =-PgnuApkApi=29=): Android 10+.  The =-29=
+  build exists because Android 10 added the W^X exec restriction that
+  older builds cannot work around; it supports subprocesses.
+- =31.1-21= (=-PgnuApkApi=21=): Android 9 and older (floor lifted to
+  API 24 by the vendored Termux).  Subprocesses work there because the
+  exec restriction arrived only in Android 10.
+
+=minSdk=, =versionCode= (api*100 + base) and the APK file name follow
+the property; =scripts/extract-gnu-apk.sh= writes a provenance marker
+(=build/gnu-apk-extracted=) that the Gradle build cross-checks, so a
+mislabelled APK cannot be assembled.  CI builds all four combinations
+(flavor x api).  =-35= builds are additionally aligned for 16 KiB
+memory pages, required by some 2024+ devices; adding that pin is a
+deliberate future change tracked in REVIEW.org.
+
+* CI
+
+- =build.yml=: =check.sh= -> GPG-verify + extract the GNU APK ->
+  prepare pinned binary inputs -> =assemble<Flavor>Release= -> sign
+  (secrets) or upload unsigned -> upload.  Bootstrap-PLACEHOLDER state
+  skips assembly with an explanatory job summary rather than shipping
+  a broken APK; passing =bootstrap_run_id= consumes artifacts of a
+  completed bootstrap run.
+- =bootstrap.yml=: manual dispatch; runs the Docker bootstrap build
+  for either/both flavors and uploads the zip + sha256 for review
+  before a pin is filled in.
+
+* Invariants (enforced by =scripts/check.sh=)
+
+- no =android:sharedUserId= in any committed manifest;
+- the two applicationIds are exactly
+  =tech.khalidrafi.emacshell.{termux,distro}=;
+- authorities/actions derive from manifest placeholders, never
+  hard-coded upstream names;
+- exactly one LAUNCHER (EmacsActivity) across the merged manifest set;
+- the committed Emacs Java tree is in the patched state;
+- every pin file exists and is well-formed;
+- no private key material anywhere in the tree.

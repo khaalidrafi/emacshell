@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Adaptive launcher icon (API 26+): dark background, purple "E"
+     foreground.  The E is drawn inside the inner 2/3 "safe zone" so no
+     launcher mask can clip it. -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/emacshell_icon_background" />
+    <foreground android:drawable="@drawable/emacshell_icon_foreground" />
+</adaptive-icon>

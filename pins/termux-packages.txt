@@ -1,0 +1,13 @@
+# termux-packages source pin.
+#
+# Used ONLY by scripts/build-bootstrap.sh, which clones this commit of
+# termux-packages and runs its Docker builder with
+# TERMUX_APP_PACKAGE set to an emacshell applicationId (see
+# pins/bootstrap-README.md and BUILD.org for the full rationale:
+# the official bootstrap is com.termux-prefixed and unusable here).
+#
+# master as of 2026-11-15; bump deliberately and re-verify the produced
+# bootstrap, since this pin defines the entire bootstrap contents.
+
+repo=https://github.com/termux/termux-packages
+commit=3e0bfec4f6bcdc7cf1201d14f24c5a9c8c597209

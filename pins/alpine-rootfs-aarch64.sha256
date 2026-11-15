@@ -1,0 +1,11 @@
+# Alpine Linux minirootfs pin (distro flavor rootfs).
+#
+# Bundled into emacshell-distro as an APK asset and staged into the
+# Termux prefix at $PREFIX/var/lib/proot-distro/installed-rootfs/alpine
+# on first boot.  Fetched and verified by scripts/prepare-distro-rootfs.sh.
+#
+# The .sha256 file next to the tarball on dl-cdn.alpinelinux.org is the
+# authority for this hash; it was fetched and cross-checked on 2026-11-15.
+
+url=https://dl-cdn.alpinelinux.org/alpine/v3.22/releases/aarch64/alpine-minirootfs-3.22.8-aarch64.tar.gz
+sha256=36091efacd083c1cf5a8c837272530bff4fc72db1fbfdef559f52de0d890bca4
