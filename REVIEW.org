@@ -1,0 +1,21 @@
+#+TITLE: emacshell review queue
+#+OPTIONS: toc:1
+
+Open questions and risks, for asynchronous review.  Each item says
+what to verify and how.  Add findings as new rows; never delete a row
+without recording the resolution.
+
+| Component | Risk | What to verify | Status |
+|---|---|---|---|
+| targetSdk 28 | Play-protect/"app built for old Android" warnings; Android 14+ blocks installing targetSdk<23 only, so 28 installs, but future Android may raise the floor; background-exec semantics differ from modern apps | Install on Android 10/12/14/15: first-boot bootstrap, notifications, phantom-process kills of long-running shells; document user-visible consequences | OPEN |
+| 16 KiB page devices | GNU =31.1-29= arm64 APK is built for 4 KiB pages; 16 KiB-page devices (some 2024+ flagships) refuse to load its =.so= files | Try on a 16 KiB device (Pixel 8+ with 16 KiB kernel opt-in); if broken, switch pins/gnu-apk.sha256 to =-35= builds (aligned for 16 KiB) or add a second matrix leg | OPEN |
+| Signing | CI artifacts unsigned when secrets absent; users must trust the artifact channel | Configure =EMACSHELL_KEYSTORE_B64= / =EMACSHELL_KEYSTORE_PASSWORD= (SECURITY.md); publish the release-key fingerprint in README before any "stable" tag | OPEN |
+| Custom bootstrap prefix | The whole environment depends on bootstrap binaries compiled with =TERMUX_APP_PACKAGE=; a wrong build silently half-works | After the first =bootstrap.yml= run: =unzip -p libtermux-bootstrap.so= embedded zip, =grep -r com.termux files/usr/etc/apt/= must be empty; run =apt update && apt install less= on device | OPEN |
+| Bootstrap Docker image | =ghcr.io/termux/package-builder= is a moving tag (termux-packages =run-docker.sh= default); pin file covers the SCRIPTS, not the image | Pin the image by digest in =build-bootstrap.sh= once a known-good build exists; record digest in pins/ | OPEN |
+| =am start= on Android 12+ | Some SELinux policies deny executing =/system/bin/am= from app processes; =termux-am= mitigates but is not guaranteed present | Verify =M-x emacshell-open-terminal= on Android 12/13/14; if both fail, fall back to a =TermuxActivity= activity-alias with a custom action + =startActivity= from Java via a small Emacs-visible bridge | OPEN |
+| =term= buffers on Android | =make-term= needs a pty; the Android port supports them but rarely exercised at this scale | =M-x emacshell-distro-login= interactive check: shell editing, =apk add=, Ctrl-C behavior | OPEN |
+| Manifest merge surface | app + emacs + termux-shared manifests merge; a future AGP could tighten =tools:= handling | =assemble= produces =app/build/intermediates/merged_manifests/= — diff against this release's copy on upgrades | OPEN |
+| =EmacsDocumentsProvider= authority | authority == applicationId (placeholder-driven); SAF clients cache by authority | Open the provider from Files/Docs UI on both flavors installed simultaneously | OPEN |
+| Proot performance | proot syscall translation is slow for I/O-heavy work (Magit on the rootfs, builds) | Acceptable-by-design; document in README FAQ if users ask | OPEN (accepted) |
+| Upstream termux-app updates | Vendored at v0.118.3; security fixes upstream do not flow automatically | Watch termux-app releases; re-run =sync-termux.sh= + rework patches deliberately | OPEN |
+| GNU Emacs updates | Pins 31.1; new Emacs releases need re-patch verification | =patch-emacs-java.py --check= fails loudly on upstream drift; regenerate and review the diff | OPEN |

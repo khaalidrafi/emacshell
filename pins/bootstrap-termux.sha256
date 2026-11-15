@@ -1,0 +1,32 @@
+# Custom-prefix bootstrap pin: emacshell-termux flavor (aarch64).
+#
+# All Termux packages are compiled with the prefix
+# /data/data/com.termux/files/usr hardcoded inside them.  The OFFICIAL
+# upstream bootstrap therefore cannot work under emacshell's applicationId
+# (tech.khalidrafi.emacshell.termux), which lives at a different data
+# directory.  A custom bootstrap must be built from termux-packages with
+# TERMUX_APP_PACKAGE=tech.khalidrafi.emacshell.termux; see
+# scripts/build-bootstrap.sh and BUILD.org ("Bootstrap prefix rebuild",
+# termux issue #24396).
+#
+# Until that CI job has produced and reviewed a build, this file holds a
+# PLACEHOLDER instead of a real pin.  scripts/install-bootstrap (Gradle
+# task in app/build.gradle) refuses to build the APK in that state, so a
+# wrong-prefix bootstrap can never ship silently.
+#
+# To fill this in after running scripts/build-bootstrap.sh:
+#
+#   <sha256 of bootstrap-aarch64.zip>
+#
+# Layout expected by the build:
+#   bootstrap/termux/bootstrap-aarch64.zip     (gitignored build output)
+#
+# For reference, the OFFICIAL upstream v0.118.3 bootstrap hashes (which
+# are com.termux-prefixed and NOT usable here) are, from termux-app
+# v0.118.3 app/build.gradle, release 2025.03.28-r1+apt-android-7:
+#   aarch64 c8d702b6f742935001c37cda81b8ac69504a95d5cf28f2899532dd8cd4b057eb
+#   arm     f3bb9d1b32552b34fff41861dbf193ec5ba2848d67d779ac1c7256da6640f85d
+#   i686    36db3e1ac3547f9a174fd763bd9a484fa1a3449cdd81e1cf2408ff0454f839c6
+#   x86_64  1c124ec2396ee70a51b0b0a574f29aa659526aa2b9f558f993b2fb05d1e51855
+
+PLACEHOLDER

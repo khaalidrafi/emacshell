@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Emacshell launcher foreground: a geometric letter "E" on a 108x108
+     adaptive-icon viewport.  The glyph lives between x=39..69 and
+     y=34..78, comfortably inside the 66x66 safe zone centered at
+     (54,54).  Drawn as rectangles rather than a font glyph so it needs
+     no bundled font and renders identically everywhere. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Vertical stem of the E. -->
+    <path
+        android:fillColor="#A78BFA"
+        android:pathData="M39,34 h10 v44 h-10 z" />
+    <!-- Top arm. -->
+    <path
+        android:fillColor="#A78BFA"
+        android:pathData="M39,34 h30 v9 h-30 z" />
+    <!-- Middle arm (slightly shorter). -->
+    <path
+        android:fillColor="#A78BFA"
+        android:pathData="M39,51.5 h26 v9 h-26 z" />
+    <!-- Bottom arm. -->
+    <path
+        android:fillColor="#A78BFA"
+        android:pathData="M39,69 h30 v9 h-30 z" />
+</vector>

@@ -1,0 +1,63 @@
+# Bootstrap workflow: build the CUSTOM-PREFIX Termux bootstraps for
+# both emacshell applicationIds using the official termux-packages
+# Docker builder (TERMUX_APP_PACKAGE=<applicationId>).
+#
+# This is manual-dispatch only: it takes 1-2 hours per flavor, and its
+# output is not wired into the APK build automatically on purpose.
+# The pins in pins/bootstrap-<flavor>.sha256 are filled in by a human
+# after reviewing the artifact (see pins/bootstrap-README.md) -- a
+# wrong-prefix bootstrap can then never be embedded silently, and a
+# reviewed one cannot be swapped without changing the pin.
+
+name: bootstrap
+
+on:
+  workflow_dispatch:
+    inputs:
+      flavors:
+        description: 'Space-separated flavors to build (termux distro)'
+        required: false
+        default: 'termux distro'
+
+permissions:
+  contents: read
+
+jobs:
+  bootstrap:
+    name: bootstrap (${{ matrix.flavor }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        # Both flavors are always in the matrix; the build and upload
+        # steps skip flavors not named in the `flavors` input.
+        flavor: [termux, distro]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Repo consistency checks
+        run: scripts/check.sh
+
+      - name: Build the custom-prefix bootstrap in the termux-packages Docker
+        if: contains(github.event.inputs.flavors, matrix.flavor)
+        run: scripts/build-bootstrap.sh "${{ matrix.flavor }}"
+
+      - name: Record the sha256 next to the artifact
+        if: contains(github.event.inputs.flavors, matrix.flavor)
+        run: |
+          set -euo pipefail
+          cd "bootstrap/${{ matrix.flavor }}"
+          sha256sum bootstrap-aarch64.zip > bootstrap-aarch64.zip.sha256
+          cat bootstrap-aarch64.zip.sha256
+
+      - name: Upload bootstrap artifact
+        if: contains(github.event.inputs.flavors, matrix.flavor)
+        uses: actions/upload-artifact@v4
+        with:
+          name: bootstrap-${{ matrix.flavor }}
+          path: |
+            bootstrap/${{ matrix.flavor }}/bootstrap-aarch64.zip
+            bootstrap/${{ matrix.flavor }}/bootstrap-aarch64.zip.sha256
+          if-no-files-found: error
+          retention-days: 90

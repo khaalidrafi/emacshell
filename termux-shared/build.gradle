@@ -1,0 +1,76 @@
+// :termux-shared -- vendored termux-shared from termux-app v0.118.3.
+//
+// Sources are copied in (and patched) by scripts/sync-termux.sh from the
+// pin recorded in pins/termux-app.txt; they are committed so fresh clones
+// build without network access.
+//
+// The flavor dimension exists for one reason: TermuxConstants derives
+// every filesystem path from TERMUX_PACKAGE_NAME, which must equal the
+// CONSUMING app's applicationId (termux packages hardcode the prefix
+// /data/data/<package>/files/usr inside their binaries).  The constant
+// is therefore compiled per flavor from BuildConfig, which the vendored
+// TermuxConstants patch reads; see patches/termux/.
+
+plugins {
+    id 'com.android.library'
+}
+
+android {
+    namespace 'com.termux.shared'
+    compileSdk project.properties.compileSdkVersion.toInteger()
+
+    defaultConfig {
+        minSdk project.properties.minSdkVersion.toInteger()
+    }
+
+    flavorDimensions 'bundle'
+    productFlavors {
+        termux {
+            buildConfigField 'String', 'EMACSHELL_PACKAGE_NAME',
+                             "\"${project.properties.applicationIdTermux}\""
+        }
+        distro {
+            buildConfigField 'String', 'EMACSHELL_PACKAGE_NAME',
+                             "\"${project.properties.applicationIdDistro}\""
+        }
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+}
+
+// Dependency set carried over verbatim from termux-app v0.118.3
+// termux-shared/build.gradle (versions frozen deliberately; upgrading
+// them is a reviewable change, not a drive-by).
+dependencies {
+    api 'androidx.appcompat:appcompat:1.3.1'
+    api 'androidx.annotation:annotation:1.3.0'
+    api 'androidx.core:core:1.6.0'
+    api 'com.google.android.material:material:1.4.0'
+    api 'com.google.guava:guava:24.1-jre'
+    api "io.noties.markwon:core:${project.properties.markwonVersion}"
+    api "io.noties.markwon:ext-strikethrough:${project.properties.markwonVersion}"
+    api "io.noties.markwon:linkify:${project.properties.markwonVersion}"
+    api "io.noties.markwon:recycler:${project.properties.markwonVersion}"
+    api 'org.lsposed.hiddenapibypass:hiddenapibypass:6.1'
+    // Do not increment beyond 1.0.0-alpha09: newer versions break
+    // ViewUtils (upstream comment).
+    api 'androidx.window:window:1.0.0-alpha09'
+    // Do not increment beyond 2.5: newer versions need java.nio.file.Path
+    // and crash on Android < 8 (upstream comment).
+    api 'commons-io:commons-io:2.5'
+
+    api project(':terminal-view')
+}

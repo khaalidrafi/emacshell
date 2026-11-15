@@ -1,0 +1,20 @@
+--- a/app/src/main/java/com/termux/app/TermuxInstaller.java
++++ b/app/src/main/java/com/termux/app/TermuxInstaller.java
+@@ -58,12 +58,15 @@
+  * <p/>
+  * (5.2) For every other zip entry, extract it into $STAGING_PREFIX and set execute permissions if necessary.
+  */
+-final class TermuxInstaller {
++/* Emacshell: opened up from package-private so that
++   tech.khalidrafi.emacshell.EmacshellApplication can start the
++   bootstrap installation when the first EmacsActivity resumes. */
++public final class TermuxInstaller {
+ 
+     private static final String LOG_TAG = "TermuxInstaller";
+ 
+     /** Performs bootstrap setup if necessary. */
+-    static void setupBootstrapIfNeeded(final Activity activity, final Runnable whenDone) {
++    public static void setupBootstrapIfNeeded(final Activity activity, final Runnable whenDone) {
+         String bootstrapErrorMessage;
+         Error filesDirectoryAccessibleError;
+ 

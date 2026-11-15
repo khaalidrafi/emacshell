@@ -1,0 +1,17 @@
+--- a/termux-shared/src/main/java/com/termux/shared/termux/TermuxConstants.java
++++ b/termux-shared/src/main/java/com/termux/shared/termux/TermuxConstants.java
+@@ -278,7 +278,13 @@
+     /** Termux app name */
+     public static final String TERMUX_APP_NAME = "Termux"; // Default: "Termux"
+     /** Termux package name */
+-    public static final String TERMUX_PACKAGE_NAME = "com.termux"; // Default: "com.termux"
++    /* Emacshell: the package name must equal the CONSUMING application's
++       applicationId (it is what every files-dir and prefix path derives
++       from, and the bootstrap binaries hardcode it), and it differs
++       between the termux and distro flavors, so it is compiled in from
++       the flavor-aware BuildConfig constant defined in
++       termux-shared/build.gradle. */
++    public static final String TERMUX_PACKAGE_NAME = com.termux.shared.BuildConfig.EMACSHELL_PACKAGE_NAME; // Emacshell per-flavor applicationId
+     /** Termux Github repo name */
+     public static final String TERMUX_GITHUB_REPO_NAME = "termux-app"; // Default: "termux-app"
+     /** Termux Github repo url */

@@ -1,0 +1,304 @@
+// :app -- the emacshell application module.
+//
+// Two product flavors of the same idea: one APK containing GNU Emacs
+// plus a Unix environment.
+//
+//   termux  Emacs + a bundled Termux bootstrap (custom-prefix, built from
+//           termux-packages with TERMUX_APP_PACKAGE set to our id)
+//   distro  Emacs + the same bootstrap, with proot/proot-distro and an
+//           Alpine minirootfs staged on first boot
+//
+// The module hosts:
+//   - the vendored termux-app v0.118.3 application sources under
+//     src/main/java/com/... and src/main/res/ (synced+patched by
+//     scripts/sync-termux.sh; committed for offline builds)
+//   - our own glue under src/main/java/tech/khalidrafi/emacshell/
+//   - our resource overrides under src/emacshell/res/ (kept apart from
+//     the vendored res dir so re-syncing cannot clobber them)
+//
+// The namespace is com.termux (not our applicationId) because the
+// vendored sources import com.termux.R; AGP allows namespace and
+// applicationId to differ, which is what makes side-by-side installs
+// with upstream apps possible while keeping the vendored code unmodified.
+
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.termux'
+    compileSdk project.properties.compileSdkVersion.toInteger()
+    ndkVersion project.properties.ndkVersion
+
+    defaultConfig {
+        applicationId project.properties.applicationIdTermux // overridden per flavor
+        minSdk project.properties.minSdkVersion.toInteger()
+        targetSdk project.properties.targetSdkVersion.toInteger()
+        versionCode 1
+        versionName '0.1.0'
+
+        // Consumed by the vendored termux manifest (permission, provider
+        // and receiver names) and by the :emacs library manifest
+        // (documents provider authority).  Both must track the final
+        // applicationId exactly, or Android will refuse components whose
+        // names collide with upstream apps.
+        manifestPlaceholders.TERMUX_PACKAGE_NAME = applicationId
+        manifestPlaceholders.EMACSHELL_APPLICATION_ID = applicationId
+
+        externalNativeBuild {
+            ndkBuild {
+                cFlags '-std=c11', '-Wall', '-Wextra', '-Werror', '-Os',
+                       '-fno-stack-protector', '-Wl,--gc-sections'
+            }
+        }
+
+        ndk {
+            // Single-ABI, universal APK per flavor by design ("least
+            // friction" install).  Extend together with
+            // terminal-emulator's abiFilters and the GNU APK pin matrix
+            // (x86_64 is the next candidate).
+            abiFilters 'arm64-v8a'
+        }
+    }
+
+    flavorDimensions 'bundle'
+    productFlavors {
+        termux {
+            dimension 'bundle'
+            applicationId project.properties.applicationIdTermux
+            manifestPlaceholders.TERMUX_PACKAGE_NAME = applicationId
+            manifestPlaceholders.EMACSHELL_APPLICATION_ID = applicationId
+        }
+        distro {
+            dimension 'bundle'
+            applicationId project.properties.applicationIdDistro
+            manifestPlaceholders.TERMUX_PACKAGE_NAME = applicationId
+            manifestPlaceholders.EMACSHELL_APPLICATION_ID = applicationId
+        }
+    }
+
+    // Only one build type matters today; release is signed in CI with
+    // apksigner (see .github/workflows/build.yml), so no signingConfig
+    // is configured here and local release builds are simply unsigned.
+    buildTypes {
+        release {
+            minifyEnabled false // revisit after the first on-device pass; REVIEW.org
+            shrinkResources false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    sourceSets {
+        main {
+            // Our own resources and shared (flavor-independent) assets
+            // live outside src/main/{res,assets} so that
+            // scripts/sync-termux.sh can wipe and re-vendor the termux
+            // res tree without touching ours.  Flavor-specific assets
+            // (init.el, and the distro Alpine rootfs) come from the
+            // automatic src/<flavor>/assets source sets.
+            res.srcDirs += 'src/emacshell/res'
+            assets.srcDirs += 'src/emacshell/assets'
+        }
+    }
+
+    externalNativeBuild {
+        ndkBuild {
+            // Vendored from termux-app; embeds the bootstrap zip into
+            // libtermux-bootstrap.so via .incbin (see scripts/build-bootstrap.sh
+            // for where the zip comes from).
+            path 'src/main/cpp/Android.mk'
+        }
+    }
+
+    packaging {
+        jniLibs {
+            // Matches android:extractNativeLibs="true" in the manifest:
+            // the GNU Emacs native libraries are dlopen'ed from the
+            // filesystem and must be extracted at install time.
+            useLegacyPackaging true
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    lint {
+        // The manifest intentionally requests system permissions that
+        // normal apps cannot hold (upstream Termux and GNU Emacs both
+        // do; they degrade gracefully when not granted).
+        disable 'ProtectedPermissions'
+        abortOnError false
+    }
+
+    applicationVariants.all { variant ->
+        variant.outputs.all { output ->
+            // emacshell-<flavor>-<versionName>[-universal].apk
+            def abi = output.getFilter(com.android.build.OutputFile.ABI)
+            outputFileName = new File(
+                "emacshell-${variant.flavorName}-${variant.versionName}" +
+                (abi ? "-${abi}" : "") + ".apk")
+        }
+    }
+}
+
+// --------------------------------------------------------------------------
+// Bootstrap zip installation.
+//
+// termux-bootstrap-zip.S .incbin's bootstrap-<arch>.zip from
+// src/main/cpp/ at native build time.  Upstream fetches the OFFICIAL
+// bootstrap at build time, but those binaries are compiled for the
+// /data/data/com.termux/files/usr prefix and would silently break under
+// emacshell's applicationId.  emacshell therefore only accepts a
+// custom-prefix bootstrap whose sha256 is pinned in
+// pins/bootstrap-<flavor>.sha256 (produced by scripts/build-bootstrap.sh
+// via the termux-packages Docker job).
+//
+// A pin that still reads PLACEHOLDER (bootstrap not yet built/pinned)
+// fails the build with instructions instead of shipping something
+// broken.  -PbootstrapZipOverride=/path/to/bootstrap.zip bypasses the
+// check for local experiments and prints a loud warning.
+// --------------------------------------------------------------------------
+def installBootstrapZip = { String flavorName ->
+    def arch = 'aarch64'
+    def pinFile = rootProject.file("pins/bootstrap-${flavorName}.sha256")
+    def expectedDir = rootProject.file("bootstrap/${flavorName}")
+    def zipFile = new File(expectedDir, "bootstrap-${arch}.zip")
+    def override = project.findProperty('bootstrapZipOverride')
+    def target = project.file("src/main/cpp/bootstrap-${arch}.zip")
+
+    if (override) {
+        println("WARNING: using -PbootstrapZipOverride=${override}; the " +
+                "bootstrap prefix is NOT being verified against a pin. " +
+                "Do not ship an APK built this way.")
+        copy {
+            from override
+            into project.file('src/main/cpp')
+            rename { "bootstrap-${arch}.zip" }
+        }
+        return
+    }
+
+    if (!pinFile.exists()) {
+        throw new GradleException("Missing ${pinFile}. See scripts/build-bootstrap.sh.")
+    }
+    def pin = pinFile.readLines().find { it.trim() && !it.trim().startsWith('#') }?.trim()
+    if (pin == null || pin == 'PLACEHOLDER') {
+        throw new GradleException(
+            "pins/bootstrap-${flavorName}.sha256 is still a PLACEHOLDER: the " +
+            "custom-prefix bootstrap for the '${flavorName}' flavor has not " +
+            "been built and pinned yet.\n" +
+            "  1. Run scripts/build-bootstrap.sh (needs Docker) or fetch the " +
+            "bootstrap artifact from the bootstrap CI workflow.\n" +
+            "  2. Place it at bootstrap/${flavorName}/bootstrap-${arch}.zip.\n" +
+            "  3. Write its sha256 into pins/bootstrap-${flavorName}.sha256.\n" +
+            "Refusing to embed an official com.termux-prefixed bootstrap: it " +
+            "would install a prefix that no emacshell binary can use.")
+    }
+    if (!zipFile.exists()) {
+        throw new GradleException(
+            "bootstrap zip not found at ${zipFile} for flavor '${flavorName}'. " +
+            "See pins/bootstrap-${flavorName}.sha256 for the expected layout.")
+    }
+    def digest = java.security.MessageDigest.getInstance('SHA-256')
+    zipFile.withInputStream { is -> def buf = new byte[8192]
+        int n; while ((n = is.read(buf)) > 0) { digest.update(buf, 0, n) } }
+    def actual = digest.digest().collect { String.format('%02x', it) }.join()
+    if (actual != pin) {
+        throw new GradleException(
+            "sha256 mismatch for ${zipFile}\n  expected: ${pin}\n  actual:   ${actual}")
+    }
+    copy {
+        from zipFile
+        into project.file('src/main/cpp')
+        rename { "bootstrap-${arch}.zip" }
+    }
+    println("Installed pinned bootstrap for flavor '${flavorName}' " +
+            "(sha256 ${actual.substring(0, 12)}...)")
+}
+
+android.applicationVariants.all { variant ->
+    if (!variant.flavorName) return
+    def flavorName = variant.flavorName
+    def task = tasks.register("installBootstrapFor${flavorName.capitalize()}") {
+        group = 'emacshell'
+        description = "Verify and install the pinned ${flavorName} bootstrap zip."
+        doLast { installBootstrapZip(flavorName) }
+    }
+    variant.preBuildProvider.get().dependsOn(task)
+}
+
+// --------------------------------------------------------------------------
+// Distro flavor: bundled Alpine rootfs.
+//
+// The distro APK carries the pinned Alpine minirootfs as an asset at
+// emacshell/alpine-rootfs.tar.gz (staged on first boot by
+// EmacshellApplication/DistroRootfsStager).  The tarball is fetched and
+// verified by scripts/prepare-distro-rootfs.sh into distro-assets/
+// (gitignored); this task re-verifies the pin and installs it into the
+// flavor asset directory before the asset merge task runs.
+// --------------------------------------------------------------------------
+def installDistroRootfs = {
+    def pinFile = rootProject.file("pins/alpine-rootfs-aarch64.sha256")
+    if (!pinFile.exists())
+        throw new GradleException("Missing ${pinFile}. See scripts/prepare-distro-rootfs.sh.")
+    def url = pinFile.readLines().find { it.startsWith('url=') }?.substring(4)?.trim()
+    def pin = pinFile.readLines().find { it.startsWith('sha256=') }?.substring(7)?.trim()
+    if (!url || !pin)
+        throw new GradleException("${pinFile} is malformed (need url= and sha256=).")
+    def tarball = rootProject.file("distro-assets/${url.tokenize('/').last()}")
+    if (!tarball.exists())
+        throw new GradleException(
+            "Alpine rootfs not found at ${tarball}.\n" +
+            "Run scripts/prepare-distro-rootfs.sh (or check out the CI artifact) " +
+            "before building the distro flavor.")
+    def digest = java.security.MessageDigest.getInstance('SHA-256')
+    tarball.withInputStream { is -> def buf = new byte[8192]
+        int n; while ((n = is.read(buf)) > 0) { digest.update(buf, 0, n) } }
+    def actual = digest.digest().collect { String.format('%02x', it) }.join()
+    if (actual != pin)
+        throw new GradleException("sha256 mismatch for ${tarball}\n" +
+                                  "  expected: ${pin}\n  actual:   ${actual}")
+    def target = project.file('src/distro/assets/emacshell/alpine-rootfs.tar.gz')
+    target.parentFile.mkdirs()
+    copy {
+        from tarball
+        into target.parentFile
+        rename { 'alpine-rootfs.tar.gz' }
+    }
+    println("Installed pinned Alpine rootfs for the distro flavor " +
+            "(sha256 ${actual.substring(0, 12)}...)")
+}
+
+android.applicationVariants.all { variant ->
+    if (variant.flavorName != 'distro') return
+    def task = tasks.register("installDistroRootfs") {
+        group = 'emacshell'
+        description = 'Verify and install the pinned Alpine rootfs asset.'
+        doLast { installDistroRootfs() }
+    }
+    variant.preBuildProvider.get().dependsOn(task)
+}
+
+// Dependency set carried over from termux-app v0.118.3 app/build.gradle
+// (versions frozen deliberately), plus our own modules.
+dependencies {
+    implementation 'androidx.annotation:annotation:1.3.0'
+    implementation 'androidx.core:core:1.6.0'
+    implementation 'androidx.drawerlayout:drawerlayout:1.1.1'
+    implementation 'androidx.preference:preference:1.1.1'
+    implementation 'androidx.viewpager:viewpager:1.0.0'
+    implementation 'com.google.guava:guava:24.1-jre'
+    implementation "io.noties.markwon:core:${project.properties.markwonVersion}"
+    implementation "io.noties.markwon:ext-strikethrough:${project.properties.markwonVersion}"
+    implementation "io.noties.markwon:linkify:${project.properties.markwonVersion}"
+    implementation "io.noties.markwon:recycler:${project.properties.markwonVersion}"
+
+    implementation project(':terminal-view')
+    implementation project(':termux-shared')
+
+    // GNU Emacs Android layer (activities, service, provider, patched
+    // Java sources, prebuilt native libraries and assets).
+    implementation project(':emacs')
+}

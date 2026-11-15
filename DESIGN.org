@@ -1,0 +1,165 @@
+#+TITLE: emacshell design
+#+OPTIONS: toc:2
+
+Runtime architecture and the reasoning behind it.  BUILD.org covers
+the build pipeline; this covers what the built artifact does.
+
+* One application, two provenances
+
+An Android APK has exactly one =android:name= Application class, one
+launcher activity, one process (per =android:process= default).  GNU
+Emacs and Termux each ship their own Application class with required
+initialization:
+
+- =org.gnu.emacs.EmacsApplication=: set up the Emacs system thread
+  (signal mask), locate the APK file (for the asset manager and dump
+  file logic), find any existing portable dump;
+- =com.termux.app.TermuxApplication=: install the Termux crash
+  handler, apply the persisted log level.
+
+Neither can simply be dropped: =EmacsApplication= is =final= (upstream
+does not want it subclassed), and Termux alone leaves Emacs
+uninitialized.  =tech.khalidrafi.emacshell.EmacshellApplication=
+therefore extends =android.app.Application= directly and replicates
+both bodies verbatim, in an order that keeps every upstream invariant:
+
+#+BEGIN_EXAMPLE
+super.onCreate ()
+TermuxCrashUtils.setCrashHandler (this)        -- first, so later
+                                                 failures are reported
+setLogLevel ()                                  -- Termux prefs
+EmacsNative.setupSystemThread ()                -- Emacs native setup
+EmacsApplication.apkFileName = findApkFile ()   -- replicated private
+EmacsApplication.findDumpFile (this)            -- already public
+installUserInitFiles ()                         -- before any activity
+registerActivityLifecycleCallbacks (this)       -- bootstrap trigger
+#+END_EXAMPLE
+
+The APK-file lookup is replicated rather than called because upstream
+keeps =getApkFile ()= private; it uses =getPackageName ()=, never the
+upstream hard-coded ="org.gnu.emacs"=.
+
+** Why Emacs is the launcher
+
+The product is "Emacs with a Unix environment", not "a terminal that
+can run Emacs".  =EmacsActivity= keeps the single MAIN/LAUNCHER
+intent filter; =TermuxActivity= loses its launcher/leanback filters
+and =shortcuts= metadata but stays =exported=, reachable via an
+explicit component intent:
+
+#+BEGIN_EXAMPLE
+am start -n tech.khalidrafi.emacshell.termux/com.termux.app.TermuxActivity
+#+END_EXAMPLE
+
+which is exactly what =M-x emacshell-open-terminal= does from Lisp
+(Emacs 31.1 exposes no =android-start-activity= primitive; the
+=android-*= Lisp surface is clipboard/notifications/directory access
+only — see =src/android.c= / =src/androidselect.c=).  The command
+prefers the bootstrap's =termux-am= over =/system/bin/am= because some
+Android 12+ SELinux policies deny plain apps the execution of the
+system =am= wrapper.
+
+* First-boot flow
+
+#+BEGIN_EXAMPLE
+ install APK
+     |
+     v
+ EmacshellApplication.onCreate
+     |- write files/.emacs.d/early-init.el + init.el (if absent)
+     |  [synchronous: EmacsActivity must not race these]
+     v
+ EmacsActivity (launcher) starts Emacs
+     |  Emacs loads early-init.el:
+     |    PATH/exec-path := <prefix>/bin : <old PATH>
+     |    PREFIX := /data/data/<applicationId>/files/usr
+     |    SHELL := <prefix>/bin/bash (when present)
+     |  Emacs loads init.el:
+     |    emacshell-open-terminal defined
+     |    [distro] emacshell-distro-login defined
+     v
+ first activity resume
+     |- TermuxInstaller.setupBootstrapIfNeeded (activity-scoped:
+     |    progress + error dialogs need a window)
+     |        |- libtermux-bootstrap.so (embedded zip, custom prefix)
+     |        |     -> files/usr          (apt, bash, coreutils, ...)
+     |        |- [distro] unpack the alpine-rootfs.tar.gz asset
+     |              -> files/usr/var/lib/proot-distro/installed-rootfs/alpine
+     v
+ steady state: Emacs is the app; the environment is one M-x away
+#+END_EXAMPLE
+
+The init files are written ONCE and then belong to the user; upgrades
+never touch them.
+
+** The distro flavor rootfs
+
+=proot-distro= (installed by the distro bootstrap) expects a
+distribution at =$PREFIX/var/lib/proot-distro/installed-rootfs/<alias>=.
+Rather than invoking =proot-distro install= (a shell script whose local
+tarball semantics are undocumented and which would need prefix
+binaries to have settled), =DistroRootfsStager= unpacks the bundled
+tarball there directly, via a small streaming tar reader
+(=TarExtractor=):
+
+- extract into =installed-rootfs/alpine-staging=, =renameTo= on
+  success — a killed process can never leave a half-rootfs under the
+  final name;
+- =bin/sh= existence is the activation test (and the idempotency
+  test — staging is a no-op once installed);
+- modes and symlinks are honored (=Os.chmod= / =Os.symlink=); hard
+  links, device nodes and fifos are skipped (none occur in an Alpine
+  minirootfs, and the app could not create them anyway);
+- every entry path is canonicalized against the destination (zip-slip
+  guard).
+
+The tarball's integrity is established before it ever enters the APK:
+sha256 pin in =pins/alpine-rootfs-aarch64.sha256=, verified by
+=prepare-distro-rootfs.sh= (cross-checked against Alpine's own
+=.sha256=) and re-verified by the Gradle build.
+
+* The two flavors
+
+| | termux | distro |
+|---|---|---|
+| applicationId | =tech.khalidrafi.emacshell.termux= | =tech.khalidrafi.emacshell.distro= |
+| label | Emacshell (Termux) | Emacshell (Distro) |
+| bootstrap | custom-prefix base set | same + =proot=, =proot-distro= |
+| extra asset | — | =emacshell/alpine-rootfs.tar.gz= |
+| init.el | =emacshell-open-terminal= | + =emacshell-distro-login= |
+| first boot | unpack bootstrap | unpack bootstrap, then stage rootfs |
+
+Flavor selection at runtime uses the applicationId (the single source
+of truth the bootstrap binaries are compiled against), not a Gradle
+constant smuggled through =BuildConfig=.
+
+* Process and identity model
+
+- One process, one UID, one data directory
+  (=/data/data/<applicationId>/files=), shared by the Emacs GUI, the
+  Termux terminal and every subprocess.  This is what upstream calls
+  the "termux/ dance" and solves by hand; here it is true by
+  construction.
+- No =sharedUserId=: side-by-side installability is law (README.md).
+  All component names that must be unique system-wide (provider
+  authorities, custom permissions, intent actions) are derived from
+  the applicationId via manifest placeholders.
+- =targetSdk 28=, inherited from both upstreams: newer targets break
+  background execution semantics a workstation-app depends on; the
+  trade-off and its review status live in REVIEW.org.
+- The GNU Emacs native libraries (=libemacs.so= and 37 companions) are
+  the official GNU build, loaded via =System.loadLibrary= exactly as
+  upstream does; =android:extractNativeLibs="true"= +
+  =useLegacyPackaging= keep them on the filesystem where the Emacs
+  loader expects them.
+
+* What is deliberately NOT done
+
+- No Emacs C rebuild, ever: the =-29= arm64 APK is the artifact of
+  record (sha256-pinned, GPG-verified in CI).
+- No background Termux service start at boot: the terminal runs only
+  when asked for; Emacs keeps its own process alive.
+- No automatic writes to the user's init files after first boot.
+- No =proot-distro install= at runtime for OTHER distros (needs
+  network and the custom-prefix repo story); the bundled alpine is the
+  only offline-supported rootfs.

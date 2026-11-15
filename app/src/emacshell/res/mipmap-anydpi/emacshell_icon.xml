@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Pre-adaptive (API 24/25) fallback for the same icon: a plain
+     layer-list standing in for the adaptive-icon element, which those
+     levels do not understand.  Both files must define the same resource
+     name; resource merging picks exactly one per API level. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/emacshell_icon_background" />
+    <item android:drawable="@drawable/emacshell_icon_foreground" />
+</layer-list>

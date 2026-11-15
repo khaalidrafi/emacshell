@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Flavor override of the (Termux-flavored) app label: the
+         launcher, recents and settings must show which bundle this is.
+         Overrides application_name from app/src/main/res/values. -->
+    <string name="application_name">Emacshell (Termux)</string>
+</resources>

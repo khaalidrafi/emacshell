@@ -1,0 +1,21 @@
+# Custom-prefix bootstrap pin: emacshell-distro flavor (aarch64).
+#
+# Same prefix problem as pins/bootstrap-termux.sha256, but built with
+# TERMUX_APP_PACKAGE=tech.khalidrafi.emacshell.distro, and with proot and
+# proot-distro added to the bootstrap package set so the distro flavor can
+# run the bundled Alpine rootfs (and install other distros at runtime)
+# without a first network round-trip.  See scripts/build-bootstrap.sh.
+#
+# Until that CI job has produced and reviewed a build, this file holds a
+# PLACEHOLDER instead of a real pin.  scripts/install-bootstrap (Gradle
+# task in app/build.gradle) refuses to build the APK in that state, so a
+# wrong-prefix bootstrap can never ship silently.
+#
+# To fill this in after running scripts/build-bootstrap.sh:
+#
+#   <sha256 of bootstrap-aarch64.zip>
+#
+# Layout expected by the build:
+#   bootstrap/distro/bootstrap-aarch64.zip     (gitignored build output)
+
+PLACEHOLDER

@@ -1,0 +1,45 @@
+# Emacshell .gitignore
+#
+# Principles: everything a fresh clone needs to BUILD (vendored termux
+# sources, patched Emacs java) is committed; everything that is
+# downloaded/verified/pinned at build time is not.  The pins/ directory
+# holds the sha256 commitments; build/ holds research material.
+
+# Research material and caches (upstream clones, downloaded tarballs).
+/build/
+
+# Gradle
+.gradle/
+build/
+**/build/
+local.properties
+
+# Extracted GNU APK contents (verified against pins/gnu-apk.sha256 by
+# scripts/extract-gnu-apk.sh before they ever land here).
+emacs/src/main/jniLibs/
+emacs/src/main/assets/
+
+# Custom-prefix bootstrap build outputs (pins/bootstrap-*.sha256).
+bootstrap/
+app/src/main/cpp/bootstrap-*.zip
+
+# Distro flavor rootfs staging (pins/alpine-rootfs-aarch64.sha256).
+distro-assets/
+app/src/distro/assets/emacshell/alpine-rootfs.tar.gz
+
+# Binaries and signatures never belong in git.
+*.apk
+*.sig
+*.jks
+*.keystore
+*.p12
+*.pem
+
+# Editors / OS noise.
+*~
+.#*
+\#*#
+.DS_Store
+.idea/
+*.iml
+.vscode/

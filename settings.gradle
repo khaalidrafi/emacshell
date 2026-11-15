@@ -1,0 +1,30 @@
+# Emacshell Gradle settings.
+#
+# Gradle 8.14.3 + AGP 8.7.3 + JDK 17.  The termux-app v0.118.3 upstream
+# build used Gradle 7.2 / AGP 4.2.2; we import their module SOURCES into
+# this modern build instead (termux-app master has itself since moved to
+# AGP 8.x, which validates that the sources build under it).
+
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+        // Termux module dependencies (markwon et al.) all resolve from
+        // mavenCentral; jitpack is kept because some termux-app forks
+        // pull androidx.window snapshots from it and we may follow suit.
+        maven { url 'https://jitpack.io' }
+    }
+}
+
+rootProject.name = 'emacshell'
+
+include ':app', ':emacs', ':termux-shared', ':terminal-emulator', ':terminal-view'

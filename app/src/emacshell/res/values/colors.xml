@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Launcher icon background: near-black with a violet cast,
+         matching the foreground E (#A78BFA). -->
+    <color name="emacshell_icon_background">#1B1B26</color>
+</resources>

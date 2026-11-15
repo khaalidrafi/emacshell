@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Replacement for the vendored termux-shared manifest: the original
+     only declared package="com.termux.shared" (now the Gradle namespace)
+     plus this permission, which is preserved. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.VIBRATE" />
+</manifest>

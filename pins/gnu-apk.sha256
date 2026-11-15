@@ -1,0 +1,28 @@
+# GNU-built Emacs Android APK pins.
+#
+# Format (one pin per line, parsed by scripts/extract-gnu-apk.sh):
+#
+#   <sha256>  <api>  <abi>  <emacs-version>
+#
+# The APKs are fetched from the official GNU mirror (override with
+# EMACSHELL_GNU_MIRROR, e.g. https://ftp.gnu.org/gnu/emacs/android) as:
+#
+#   <mirror>/emacs-<version>-<api>-<abi>.apk
+#
+# Authenticity: each APK has a detached OpenPGP signature at the same URL
+# with the ".sig" suffix, signed with the GNU Emacs release key committed
+# under keys/emacs-release-key.asc
+# (primary fingerprint 6B67 8974 F883 1317 51B2 B1A0 9EF0 C7D0 EDB0 AF5A,
+#  "Po Lu <luangruo@yahoo.com>").  GPG verification is performed in CI;
+# see .github/workflows/build.yml and SECURITY.md for the trust path.
+#
+# API levels (from the GNU mirror listing, verified 2026-11-15):
+#   arm64-v8a:  api 21, 29, 35     x86_64: api 21, 29, 35
+#   armeabi-v7a: api 16, 24
+#
+# 31.1-29 was chosen for the first release because it covers Android 10+
+# (the overwhelming majority of active devices) in a single arm64 build.
+# The -35 builds are built with 16 KiB page alignment and are needed for
+# devices that ship with 16 KiB kernels; tracked in REVIEW.org.
+
+0d44703d92cc5023ed8e9530d8f29ee3a04e5d2d2cc5d7610036446b29e86a2a  29  arm64-v8a  31.1
