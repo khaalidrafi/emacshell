@@ -222,14 +222,22 @@ if [ -s keys/emacs-release-key.asc ] && ! grep -q 'PRIVATE KEY' keys/emacs-relea
 else
     bad "GNU release key present (public part only)"
 fi
-leaked="$(find . -path ./build -prune -o -type f \( -name '*.jks' -o -name '*.keystore' -o -name '*.p12' -o -name '*.pem' \) -print 2>/dev/null || true)"
+# Both checks scan COMMITTED files only (git ls-files): the working
+# tree also holds gitignored extraction output (emacs/src/main/assets
+# is GNU's full lisp tree, which legitimately contains test fixtures
+# like lisp/obsolete/pgg-parse.el with a test key vector), and none of
+# that can ever be committed.
+tracked="$(git ls-files 2>/dev/null || true)"
+leaked="$(printf '%s\n' "${tracked}" | grep -E '\.(jks|keystore|p12|pem)$' || true)"
 if [ -z "${leaked}" ]; then
-    ok "no keystore/PEM files outside build/"
+    ok "no keystore/PEM files tracked"
 else
     printf '     found: %s\n' "${leaked}"
-    bad "no keystore/PEM files outside build/"
+    bad "no keystore/PEM files tracked"
 fi
-if grep -RIl --exclude-dir=build --exclude-dir=.git --exclude='check.sh' 'BEGIN.*PRIVATE KEY' . >/dev/null 2>&1; then
+if [ -n "${tracked}" ] \
+   && printf '%s\n' "${tracked}" | grep -vE '^scripts/check\.sh$' \
+        | tr '\n' '\0' | xargs -0 -r grep -Il 'BEGIN.*PRIVATE KEY' >/dev/null 2>&1; then
     bad "no private key material committed"
 else
     ok "no private key material committed"
