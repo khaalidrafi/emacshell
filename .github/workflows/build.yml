@@ -47,7 +47,10 @@ jobs:
   build:
     name: build (${{ matrix.flavor }}, api${{ matrix.gnu_api }})
     needs: verify
-    runs-on: ubuntu-latest
+    # ubuntu-latest migrated to 26.04 (Oct 2026) where
+    # android-actions/setup-android@v3's sdkmanager call dies with
+    # exit 1 while "Computing updates"; 24.04 is the proven image.
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
     strategy:
       fail-fast: false
