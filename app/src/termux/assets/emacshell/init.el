@@ -60,4 +60,14 @@ plain apps the ability to execute the system am wrapper."
                    "start" "-n" component)
     (message "Started %s" component)))
 
+;; eservo -- the embedded browser-automation package vendored by the
+;; app (see README "eservo").  The directory itself is app-owned and
+;; re-installed on every boot; these two lines are the only wiring the
+;; user init needs.  Lazy autoloads keep startup cost at zero -- the
+;; package loads on first use of any M-x eservo-* command.
+(load (expand-file-name "site-lisp/eservo/eservo-autoloads.el"
+                        user-emacs-directory)
+      nil t)
+
 ;;; init.el ends here
+

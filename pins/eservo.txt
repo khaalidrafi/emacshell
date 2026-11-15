@@ -1,0 +1,16 @@
+# eservo source pin.
+#
+# Vendored into this repository as app/src/emacshell/assets/emacshell/
+# eservo/ (10 .el files + the generated eservo-autoloads.el + the GPL
+# LICENSE).  eservo is the embedded browser-automation package
+# (Emacs-driven web automation; the servo engine rides the optional
+# libeservo module -- see that repo's docs/EMBEDDED-SERVO.org for the
+# in-APK module plan, Phase 2).  Re-vendor only by moving this pin:
+# copy the .el files at the pinned commit, regenerate
+# eservo-autoloads.el from them (batch: emacs -L . -l loaddefs-gen,
+# loaddefs-generate default-directory "eservo-autoloads.el"), keep the
+# sha256 list below in sync.
+
+repo=https://github.com/khaalidrafi/eservo
+branch=ai/main
+commit=5cccf7c0774b7612a5e58147fc8564e47439c123

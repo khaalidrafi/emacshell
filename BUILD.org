@@ -40,6 +40,13 @@ style; namespaces live in our =build.gradle= files).
 :terminal-view      library
 #+END_EXAMPLE
 
+The eservo Elisp package is vendored under
+=app/src/emacshell/assets/emacshell/eservo/= (pin: =pins/eservo.txt= +
+=pins/eservo.sha256=); =EmacshellApplication.installEservo()= copies it to
+=files/.emacs.d/site-lisp/eservo/= on every boot and prepends that dir to
+=EMACSLOADPATH=.  Unlike early-init/init.el these files are APP code and are
+overwritten on upgrade by design.
+
 =app= has =namespace com.termux= but a different =applicationId= (AGP
 allows this) because the vendored sources import =com.termux.R=.  The
 flavor-dependent bits:

@@ -6,6 +6,7 @@ import android.content.Context;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.os.Build;
+import android.system.Os;
 import android.util.Log;
 
 import com.termux.app.TermuxInstaller;
@@ -70,6 +71,7 @@ public final class EmacshellApplication extends Application
 
         /* --- Emacshell glue --- */
         installUserInitFiles();
+        installEservo();
 
         /* TermuxInstaller.setupBootstrapIfNeeded needs an Activity for
            its progress and error dialogs, so the bootstrap is started
@@ -164,6 +166,78 @@ public final class EmacshellApplication extends Application
             tmp.delete();
             Logger.logErrorExtended(LOG_TAG,
                     "Failed to install " + dst + ": " + e.getMessage());
+        }
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* eservo -- the embedded browser-automation package.                  */
+    /* ------------------------------------------------------------------ */
+
+    /**
+     * The vendored eservo Elisp package (app/src/emacshell/assets/
+     * emacshell/eservo/, pinned by pins/eservo.txt) is APP code, not user
+     * configuration, so unlike early-init.el/init.el it is re-installed
+     * on every boot: upgrading emacshell upgrades eservo.  User edits to
+     * these files have no promise of survival; local customization goes
+     * into the user-owned init.el instead (see README).
+     *
+     * The directory is also prepended to EMACSLOADPATH so the package is
+     * on the load-path for EVERY install -- including installs whose
+     * first-boot init.el predates this feature (those files are
+     * user-owned and are never rewritten).  The trailing empty element
+     * keeps Emacs's default load-path intact: an empty element in
+     * EMACSLOADPATH stands for the default list.
+     */
+    private void installEservo() {
+        File siteDir = new File(getFilesDir(), ".emacs.d/site-lisp/eservo");
+        if (!siteDir.isDirectory() && !siteDir.mkdirs()) {
+            Logger.logError(LOG_TAG, "Cannot create " + siteDir
+                    + "; eservo not installed");
+            return;
+        }
+        installAssetDirRecursive("emacshell/eservo", siteDir);
+
+        String eservoPath = siteDir.getAbsolutePath();
+        String existing = System.getenv("EMACSLOADPATH");
+        String loadpath = eservoPath + ":"
+                + (existing == null ? "" : existing);
+        try {
+            Os.setenv("EMACSLOADPATH", loadpath, true);
+        } catch (Exception e) {
+            Logger.logError(LOG_TAG, "Cannot set EMACSLOADPATH: " + e);
+        }
+    }
+
+    /** Recursively copy an asset directory to dst (plain overwrite). */
+    private void installAssetDirRecursive(String assetDir, File dst) {
+        try {
+            String[] entries = getAssets().list(assetDir);
+            if (entries == null)
+                return;
+            for (String entry : entries) {
+                String childAsset = assetDir + "/" + entry;
+                File childDst = new File(dst, entry);
+                if (getAssets().list(childAsset).length == 0) {
+                    /* Leaf file: copy verbatim (overwrite, app-owned). */
+                    try (InputStream in = getAssets().open(childAsset);
+                         OutputStream out = new FileOutputStream(childDst)) {
+                        byte[] buffer = new byte[8192];
+                        int n;
+                        while ((n = in.read(buffer)) > 0)
+                            out.write(buffer, 0, n);
+                    }
+                } else {
+                    if (!childDst.isDirectory() && !childDst.mkdirs()) {
+                        Logger.logError(LOG_TAG,
+                                "Cannot create " + childDst);
+                        continue;
+                    }
+                    installAssetDirRecursive(childAsset, childDst);
+                }
+            }
+        } catch (IOException e) {
+            Logger.logErrorExtended(LOG_TAG,
+                    "Failed to install eservo assets: " + e.getMessage());
         }
     }
 
