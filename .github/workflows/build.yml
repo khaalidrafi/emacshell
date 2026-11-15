@@ -45,7 +45,7 @@ jobs:
         run: scripts/check.sh
 
   build:
-    name: build (${{ matrix.flavor }})
+    name: build (${{ matrix.flavor }}, api${{ matrix.gnu_api }})
     needs: verify
     runs-on: ubuntu-latest
     timeout-minutes: 90
@@ -54,9 +54,17 @@ jobs:
       matrix:
         # Single-ABI (arm64-v8a) by design; x86_64 joins when the GNU
         # APK pin matrix in pins/gnu-apk.sha256 grows.
+        #
+        # Two GNU APK api levels (see pins/gnu-apk.sha256): the number
+        # in the GNU file name is the MINIMUM API the package supports,
+        # so Android 10+ takes api 29 (default) and Android 9 or older
+        # takes api 21.  Both are built on every push; minSdk,
+        # versionCode and the APK name follow the api level.
         flavor: [termux, distro]
+        gnu_api: [29, 21]
     env:
       FLAVOR: ${{ matrix.flavor }}
+      GNU_API: ${{ matrix.gnu_api }}
     steps:
       - uses: actions/checkout@v4
 
@@ -82,11 +90,11 @@ jobs:
         run: |
           set -euxo pipefail
           mkdir -p build/downloads
-          apk="build/downloads/emacs-31.1-29-arm64-v8a.apk"
+          apk="build/downloads/emacs-31.1-${GNU_API}-arm64-v8a.apk"
           curl -fSL --retry 3 -o "${apk}" \
-            "${GNU_MIRROR}/emacs-31.1-29-arm64-v8a.apk"
+            "${GNU_MIRROR}/emacs-31.1-${GNU_API}-arm64-v8a.apk"
           curl -fSL --retry 3 -o "${apk}.sig" \
-            "${GNU_MIRROR}/emacs-31.1-29-arm64-v8a.apk.sig"
+            "${GNU_MIRROR}/emacs-31.1-${GNU_API}-arm64-v8a.apk.sig"
           # Prefer the committed copy of the release key; fall back to
           # fetching it from ftp.gnu.org.  If BOTH fail the step fails:
           # an unverified Emacs binary must never enter an APK.
@@ -98,7 +106,7 @@ jobs:
           gpg --verify "${apk}.sig" "${apk}"
 
       - name: Unpack the GNU APK (sha256-pinned)
-        run: scripts/extract-gnu-apk.sh 29 arm64-v8a
+        run: scripts/extract-gnu-apk.sh "${GNU_API}" arm64-v8a
 
       - name: Prepare pinned binary inputs (bootstrap / Alpine rootfs)
         id: pins
@@ -164,7 +172,8 @@ jobs:
           set -euo pipefail
           chmod +x gradlew
           cap="$(printf '%s' "${FLAVOR}" | sed 's/^./\U&/')"
-          ./gradlew --no-daemon --stacktrace "assemble${cap}Release"
+          ./gradlew --no-daemon --stacktrace \
+            "-PgnuApkApi=${GNU_API}" "assemble${cap}Release"
 
       - name: Sign the APK (or upload unsigned, with a warning)
         if: steps.assemble.outcome == 'success'
@@ -194,7 +203,7 @@ jobs:
         if: steps.assemble.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: emacshell-${{ matrix.flavor }}-apk
+          name: emacshell-${{ matrix.flavor }}-api${{ matrix.gnu_api }}-apk
           path: app/build/outputs/apk/**/*.apk
           if-no-files-found: error
           retention-days: 14

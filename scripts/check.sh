@@ -137,11 +137,17 @@ else
 fi
 
 # --- 6. pin files --------------------------------------------------------------
-if awk '$2 == 29 && $3 == "arm64-v8a" && $1 ~ /^[0-9a-f]{64}$/' pins/gnu-apk.sha256 | grep -q .; then
-    ok "pins/gnu-apk.sha256 has a 29/arm64-v8a entry"
-else
-    bad "pins/gnu-apk.sha256 has a 29/arm64-v8a entry"
-fi
+# Both GNU api levels are pinned (the api number is the MINIMUM the
+# package supports; Android 10+ takes 29, Android 9 and older needs 21).
+gnu_pin_fail=0
+for api in 29 21; do
+    if awk -v a="${api}" '$2 == a && $3 == "arm64-v8a" && $1 ~ /^[0-9a-f]{64}$/' pins/gnu-apk.sha256 | grep -q .; then
+        ok "pins/gnu-apk.sha256 has a ${api}/arm64-v8a entry"
+    else
+        bad "pins/gnu-apk.sha256 has a ${api}/arm64-v8a entry"
+        gnu_pin_fail=1
+    fi
+done
 if grep -q '^tag=v0\.118\.3$' pins/termux-app.txt \
    && grep -qE '^commit=[0-9a-f]{40}$' pins/termux-app.txt; then
     ok "pins/termux-app.txt is well-formed (tag v0.118.3 + commit)"

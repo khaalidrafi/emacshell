@@ -7,6 +7,7 @@ without recording the resolution.
 
 | Component | Risk | What to verify | Status |
 |---|---|---|---|
+| Android <= 9 devices | GNU =-29= APK is configured for a *minimum* of API 29; on Android 9 it must never be installed | CLOSED: dual pins (=31.1-21= + =31.1-29=), =-PgnuApkApi= + provenance cross-check, CI builds both; minSdk follows the api (BUILD.org "API-level flavors") | 
 | targetSdk 28 | Play-protect/"app built for old Android" warnings; Android 14+ blocks installing targetSdk<23 only, so 28 installs, but future Android may raise the floor; background-exec semantics differ from modern apps | Install on Android 10/12/14/15: first-boot bootstrap, notifications, phantom-process kills of long-running shells; document user-visible consequences | OPEN |
 | 16 KiB page devices | GNU =31.1-29= arm64 APK is built for 4 KiB pages; 16 KiB-page devices (some 2024+ flagships) refuse to load its =.so= files | Try on a 16 KiB device (Pixel 8+ with 16 KiB kernel opt-in); if broken, switch pins/gnu-apk.sha256 to =-35= builds (aligned for 16 KiB) or add a second matrix leg | OPEN |
 | Signing | CI artifacts unsigned when secrets absent; users must trust the artifact channel | Configure =EMACSHELL_KEYSTORE_B64= / =EMACSHELL_KEYSTORE_PASSWORD= (SECURITY.md); publish the release-key fingerprint in README before any "stable" tag | OPEN |

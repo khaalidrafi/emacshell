@@ -70,9 +70,23 @@ three (plus both emacshell flavors) can be installed at once.
 
 ## Installing
 
-Grab an APK from the [build workflow
+Grab the right APK from the [build workflow
 artifacts](../../actions/workflows/build.yml) (or build it, below) and
-install it with `adb install` or your file manager. On first launch:
+install it with `adb install` or your file manager.
+
+**Which APK?** Two axes matter:
+
+| Your Android | APK | Why |
+|---|---|---|
+| 10 or newer | `...-api29.apk` | The number in GNU's Emacs APK names is the *minimum* API level the build supports; `-29` is the default |
+| 9 or older | `...-api21.apk` | Same rule: `-21` runs down to Android 5; emacshell lifts the floor to 7 (Termux v0.118.3) |
+| Low RAM (1-3 GB, e.g. Redmi 8A) | the **termux** flavor | proot's syscall translation plus a second userland costs memory you do not have; `pkg install` anything you need into the prefix instead |
+| You need a full musl distro | the **distro** flavor | Bundled Alpine + `apk`, at a RAM cost |
+
+Installing an api21 build over an api29 build of the same applicationId
+(or vice versa) is a versionCode switch between variants — it works as
+an upgrade in the 9-to-10 direction; in the other direction uninstall
+first. On first launch:
 
 1. Emacs starts immediately;
 2. a progress dialog unpacks the bootstrap into the app's private
@@ -80,6 +94,11 @@ install it with `adb install` or your file manager. On first launch:
 3. **Emacshell (Distro) only**: the bundled Alpine rootfs is staged
    for proot-distro in the background; `M-x emacshell-distro-login`
    becomes available when it finishes.
+
+**MIUI / aggressive battery managers** (Redmi/Xiaomi phones): lock
+emacshell in Recents and/or disable battery optimization for it, or
+MIUI will kill the Emacs process (and any running terminal session)
+in the background — the same advice Termux and GNU Emacs give.
 
 Release APKs are signed with the project key; CI artifacts without
 configured signing secrets are unsigned and need
@@ -96,7 +115,15 @@ NDK 27.0.12077973), and network access on the first run.
 scripts/check.sh                     # static consistency checks
 scripts/extract-gnu-apk.sh 29 arm64-v8a   # fetch+verify+unpack the GNU APK
 ./gradlew assembleTermuxRelease      # or assembleDistroRelease
+# Android 9 or older device? Use the -21 GNU build instead:
+scripts/extract-gnu-apk.sh 21 arm64-v8a
+./gradlew assembleTermuxRelease -PgnuApkApi=21
 ```
+
+The api level passed to `extract-gnu-apk.sh` and `-PgnuApkApi` must
+agree — the build cross-checks the extraction's provenance marker and
+fails loudly on a mismatch (an APK labelled api21 must never contain
+api29 libraries).
 
 The **bootstrap pins start as `PLACEHOLDER`**: a fresh clone cannot
 produce an installable APK until the custom-prefix bootstrap has been

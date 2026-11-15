@@ -25,6 +25,41 @@ plugins {
     id 'com.android.application'
 }
 
+// ---------------------------------------------------------------------------
+// GNU APK API-level selection (-PgnuApkApi=29|21, default 29).
+//
+// The number in the GNU APK file name is the MINIMUM API level the
+// package is configured for, so Android 10+ devices take the -29
+// build while Android 9 and older need -21 (subprocesses work on
+// Android <= 9; the W^X exec restriction that motivated the -29
+// build arrived in Android 10).  See pins/gnu-apk.sha256.
+//
+// This property drives minSdk (never below the Termux floor, 24),
+// versionCode (api*100 + base, so api variants never collide on
+// update: 29xx always outranks 21xx for a 9-to-10 OS upgrade) and
+// the APK file name.  The extracted jniLibs provenance marker
+// (build/gnu-apk-extracted, written by scripts/extract-gnu-apk.sh)
+// is cross-checked so a mislabelled APK cannot be produced.
+// ---------------------------------------------------------------------------
+def gnuApkApi = (project.findProperty('gnuApkApi') ?: '29').toString().toInteger()
+if (!(gnuApkApi in [21, 29])) {
+    throw new GradleException("-PgnuApkApi must be 21 or 29 (got ${gnuApkApi}); see pins/gnu-apk.sha256")
+}
+def gnuApkMarker = rootProject.file('build/gnu-apk-extracted')
+if (gnuApkMarker.exists()) {
+    def markerApi = gnuApkMarker.readLines().find { it.trim() }?.trim()?.split(/\s+/)?.getAt(1)
+    if (markerApi && markerApi.toInteger() != gnuApkApi) {
+        throw new GradleException(
+            "GNU APK mismatch: jniLibs were extracted from the api-${markerApi} build " +
+            "(build/gnu-apk-extracted) but -PgnuApkApi=${gnuApkApi}. Re-run " +
+            "scripts/extract-gnu-apk.sh ${gnuApkApi} arm64-v8a before assembling.")
+    }
+} else if (file('emacs/src/main/jniLibs/arm64-v8a').exists()
+           && file('emacs/src/main/jniLibs/arm64-v8a').list().length > 0) {
+    logger.warn('WARNING: no build/gnu-apk-extracted marker but jniLibs exist; ' +
+                "assembling as api-${gnuApkApi} on trust. Re-run scripts/extract-gnu-apk.sh to record provenance.")
+}
+
 android {
     namespace 'com.termux'
     compileSdk project.properties.compileSdkVersion.toInteger()
@@ -32,9 +67,14 @@ android {
 
     defaultConfig {
         applicationId project.properties.applicationIdTermux // overridden per flavor
-        minSdk project.properties.minSdkVersion.toInteger()
+        // The GNU build's minimum API level IS this app's honest floor:
+        // installing an api-29 build on Android 9 would only crash at
+        // dlopen time.  api-21 lifts to the Termux v0.118.3 floor (24).
+        minSdk Math.max(project.properties.minSdkVersion.toInteger(), gnuApkApi)
         targetSdk project.properties.targetSdkVersion.toInteger()
-        versionCode 1
+        // Per-api versionCodes keep updates monotonic within a variant
+        // and let a 9->10 OS upgrade switch variants cleanly (29xx > 21xx).
+        versionCode gnuApkApi * 100 + 1
         versionName '0.1.0'
 
         // Consumed by the vendored termux manifest (permission, provider
@@ -134,10 +174,10 @@ android {
 
     applicationVariants.all { variant ->
         variant.outputs.all { output ->
-            // emacshell-<flavor>-<versionName>[-universal].apk
+            // emacshell-<flavor>-<versionName>-api<gnuApi>[-universal].apk
             def abi = output.getFilter(com.android.build.OutputFile.ABI)
             outputFileName = new File(
-                "emacshell-${variant.flavorName}-${variant.versionName}" +
+                "emacshell-${variant.flavorName}-${variant.versionName}-api${gnuApkApi}" +
                 (abi ? "-${abi}" : "") + ".apk")
         }
     }

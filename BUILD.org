@@ -156,15 +156,25 @@ when the secrets are absent.
 
 * API-level flavors of the GNU APK
 
-The GNU mirror publishes Emacs APKs built against API 21, 29 and 35.
-We pin =31.1-29=:
+The GNU mirror publishes Emacs APKs built for API 21, 29 and 35.  The
+number is the *minimum* API level the package is configured for (GNU
+announcement, Aug 2026: pick "the nearest API level not exceeding that
+of the operating system").  emacshell pins BOTH arm64 variants:
 
-- the =-29= build supports subprocesses (the =-21= one does not —
-  Android 10 exec restrictions), which the whole premise of emacshell
-  rests on;
-- =-35= builds are additionally aligned for 16 KiB memory pages,
-  required by some 2024+ devices; switching the pin to =-35= (or
-  shipping both) is a deliberate future change tracked in REVIEW.org.
+- =31.1-29= (default, =-PgnuApkApi=29=): Android 10+.  The =-29=
+  build exists because Android 10 added the W^X exec restriction that
+  older builds cannot work around; it supports subprocesses.
+- =31.1-21= (=-PgnuApkApi=21=): Android 9 and older (floor lifted to
+  API 24 by the vendored Termux).  Subprocesses work there because the
+  exec restriction arrived only in Android 10.
+
+=minSdk=, =versionCode= (api*100 + base) and the APK file name follow
+the property; =scripts/extract-gnu-apk.sh= writes a provenance marker
+(=build/gnu-apk-extracted=) that the Gradle build cross-checks, so a
+mislabelled APK cannot be assembled.  CI builds all four combinations
+(flavor x api).  =-35= builds are additionally aligned for 16 KiB
+memory pages, required by some 2024+ devices; adding that pin is a
+deliberate future change tracked in REVIEW.org.
 
 * CI
 
