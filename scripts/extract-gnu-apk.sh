@@ -91,12 +91,25 @@ assets_dir="${emacs_module}/src/main/assets"
 echo "Extracting lib/${abi}/ -> ${jniLibs_dir}"
 rm -rf "${jniLibs_dir}"
 mkdir -p "${jniLibs_dir}"
-unzip -q -o "${apk}" "lib/${abi}/*" -d "${emacs_module}/src/main/jniLibs"
+# -j (junk paths): the APK stores lib/<abi>/NAME, but AGP's jniLibs
+# layout wants jniLibs/<abi>/NAME -- without -j unzip recreates the
+# full lib/<abi>/ subtree under jniLibs/ and AGP finds nothing.
+unzip -q -o -j "${apk}" "lib/${abi}/*" -d "${jniLibs_dir}"
 
 echo "Extracting assets/ -> ${assets_dir}"
 rm -rf "${assets_dir}"
 mkdir -p "${assets_dir}"
-unzip -q -o "${apk}" "assets/*" -d "${assets_dir}"
+# The APK-internal "assets/" prefix must be stripped: the Emacs C
+# runtime opens AssetManager paths like "lisp/..." (the prefix is
+# implicit in the APK format), and AGP packages src/main/assets/X as
+# APK assets/X.  unzip cannot drop path components, so unpack into a
+# scratch dir and move the subtree up.
+scratch="${ROOT}/build/assets-unpack"
+rm -rf "${scratch}"
+mkdir -p "${scratch}"
+unzip -q -o "${apk}" "assets/*" -d "${scratch}"
+mv "${scratch}/assets/"* "${assets_dir}/"
+rm -rf "${scratch}"
 
 # The APK also contains res/, classes.dex and resources.arsc from GNU's own
 # build; those are intentionally NOT extracted.  The Java layer is rebuilt
@@ -111,3 +124,12 @@ if [ "${so_count}" -lt 30 ] || [ "${asset_count}" -lt 4000 ]; then
     echo "error: extraction looks incomplete (expected >=30 libs and >=4000 assets)" >&2
     exit 1
 fi
+
+# Provenance marker for the Gradle build (gitignored, lives under
+# build/): records WHICH pinned APK the current jniLibs/assets came
+# from, so -PgnuApkApi can be cross-checked and an APK labelled
+# "api21" can never silently contain api29 libraries (or vice versa).
+marker="${ROOT}/build/gnu-apk-extracted"
+mkdir -p "$(dirname "${marker}")"
+printf '%s\n' "${pin} ${api} ${abi} ${version}" > "${marker}"
+echo "Recorded extraction provenance: ${pin} ${api} ${abi} ${version}"
