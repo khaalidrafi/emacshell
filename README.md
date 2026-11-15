@@ -106,6 +106,40 @@ configured signing secrets are unsigned and need
 targets SDK 28, like upstream Termux and GNU Emacs do, to keep the
 background-shell semantics they rely on — see REVIEW.org).
 
+## eservo — the embedded browser-automation package
+
+emacshell vendors [eservo](https://github.com/khaalidrafi/eservo)
+(`M-x eservo-goto`, `eservo-snapshot`, `eservo-click`, `eservo-script-run`,
+`eservo-agent-brief`, ...): Emacs-driven web automation with zero AI in the
+loop unless you hand the command brief to an agent. It ships in the APK as
+plain Elisp (`app/src/emacshell/assets/emacshell/eservo/`, pinned by
+`pins/eservo.txt` + `pins/eservo.sha256`), is re-installed by the app on every
+boot under `~/.emacs.d/site-lisp/eservo/`, and is put on the `load-path` by
+the app itself (`EMACSLOADPATH`) — first-boot `init.el` templates additionally
+load its autoloads, so startup cost is zero and `M-x eservo-*` works on first
+use.
+
+Backends from the app: `adb` (drive a paired phone's browser via
+`pkg install android-tools` inside the bundled terminal), `cdp` (drive a
+Chromium-based browser's DevTools port — on-device via the terminal's
+loopback, or a desktop browser over the LAN), and `embedded` — the servo
+engine loaded INTO the Emacs process as `libeservo.so`. The embedded module
+is the end state for this app (no separate browser app, no devtools port):
+its packaging plan (cargo-ndk arm64-v8a into `jniLibs`, Phase 2 of the
+[eservo design doc](https://github.com/khaalidrafi/eservo/blob/ai/main/docs/EMBEDDED-SERVO.org))
+is tracked in REVIEW.org until the eservo servo-pin lane goes green on
+desktop first.
+
+Existing installs whose first-boot `init.el` predates eservo: add
+
+```elisp
+(load (expand-file-name "site-lisp/eservo/eservo-autoloads.el"
+                        user-emacs-directory)
+      nil t)
+```
+
+to your `init.el` (or uninstall + reinstall for a fresh first boot).
+
 ## Building from source
 
 Requirements: JDK 17, Android SDK (platform 35, build-tools 35.0.0,
@@ -141,7 +175,8 @@ See `pins/bootstrap-README.md` and BUILD.org for the full story.
 | `emacs/` | `:emacs` library: patched GNU Emacs Java layer, res, and (generated) native libs + assets |
 | `termux-shared/`, `terminal-emulator/`, `terminal-view/` | vendored Termux modules |
 | `scripts/` | build pipeline (sync, patch, extract, bootstrap, rootfs, checks) |
-| `pins/` | sha256/commit commitments for everything downloaded |
+| `pins/` | sha256/commit commitments for everything downloaded (GNU APK, bootstrap, termux-app, eservo, Alpine rootfs) |
+| `app/src/emacshell/assets/emacshell/eservo/` | vendored eservo Elisp package (browser automation), re-installed every boot |
 | `patches/termux/` | the exact diffs applied to the vendored termux-app |
 | `keys/emacs-release-key.asc` | public GNU Emacs release key (for APK signature verification) |
 
