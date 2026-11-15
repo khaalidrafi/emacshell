@@ -87,8 +87,6 @@ jobs:
         run: |
           set -euxo pipefail
           echo "ANDROID_HOME=${ANDROID_HOME}"
-          sdkmanager --version
-          yes | sdkmanager --licenses > /dev/null || true
           install=""
           [ -d "${ANDROID_HOME}/platforms/android-35" ] \
             || install="${install} platforms;android-35"
@@ -98,12 +96,21 @@ jobs:
             || install="${install} ndk;27.0.12077973"
           [ -d "${ANDROID_HOME}/platform-tools" ] \
             || install="${install} platform-tools"
-          if [ -n "${install}" ]; then
-            # shellcheck disable=SC2086
-            sdkmanager --install ${install}
-          else
-            echo "all pinned SDK components are preinstalled"
+          if [ -z "${install}" ]; then
+            echo "all pinned SDK components are preinstalled; sdkmanager not needed"
+            exit 0
           fi
+          echo "missing:${install}"
+          # sdkmanager is not on PATH on the hosted images; find it in
+          # the preinstalled cmdline-tools (newest version wins).
+          sdkm="$(ls -1 "${ANDROID_HOME}"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | sort -V | tail -n1 || true)"
+          if [ -z "${sdkm}" ]; then
+            echo "::error::components missing (${install}) but no sdkmanager under ${ANDROID_HOME}/cmdline-tools"
+            exit 1
+          fi
+          yes | "${sdkm}" --licenses > /dev/null || true
+          # shellcheck disable=SC2086
+          "${sdkm}" --install ${install}
 
       - name: Verify the GNU Emacs APK signature (supply chain)
         run: |
