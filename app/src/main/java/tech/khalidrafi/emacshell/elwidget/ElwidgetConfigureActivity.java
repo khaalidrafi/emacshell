@@ -11,6 +11,7 @@ import android.widget.ListView;
 
 import com.termux.R;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
