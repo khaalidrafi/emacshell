@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Root of every elwidget.  Children are added at runtime via
+     RemoteViews.addView (API 31+); on older Android the fallback
+     layout (elwidget_fallback) with a rendered bitmap is used
+     instead.  The background color is set per spec at runtime. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/elwidget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#1e1e2e"
+    android:padding="8dp" >
+
+    <LinearLayout
+        android:id="@+id/elwidget_column"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical" />
+
+</LinearLayout>

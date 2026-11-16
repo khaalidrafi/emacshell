@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Fallback for API 24-30 (no RemoteViews.addView): the whole spec
+     tree is rendered to a bitmap; one tap opens Emacs. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/elwidget_fallback_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#1e1e2e"
+    android:padding="8dp" >
+
+    <TextView
+        android:id="@+id/elwidget_fallback_title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textSize="15sp"
+        android:textStyle="bold"
+        android:textColor="#cdd6f4" />
+
+    <TextView
+        android:id="@+id/elwidget_fallback_hint"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textSize="11sp"
+        android:textColor="#a6adc8" />
+
+    <ImageView
+        android:id="@+id/elwidget_fallback_image"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:adjustViewBounds="true"
+        android:scaleType="fitStart"
+        android:contentDescription="widget body" />
+
+</LinearLayout>

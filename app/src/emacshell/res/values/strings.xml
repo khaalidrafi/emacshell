@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- emacshell's own string resources (see app/build.gradle: the
+     emacshell res tree is ours; src/main/res is re-vendored from
+     termux-app by scripts/sync-termux.sh and must stay upstream). -->
+<resources>
+
+    <!-- elwidget: Emacs-defined home-screen widgets -->
+    <string name="elwidget_name_4x1">Emacs Widget 4x1</string>
+    <string name="elwidget_name_4x2">Emacs Widget 4x2</string>
+    <string name="elwidget_name_4x3">Emacs Widget 4x3</string>
+    <string name="elwidget_configure_title">Pick a widget spec</string>
+    <string name="elwidget_configure_empty">No widget specs yet.\n\nIn Emacs, define a widget (M-x elwidget-define, or the built-in Org widgets) and run M-x elwidget-refresh.</string>
+
+</resources>

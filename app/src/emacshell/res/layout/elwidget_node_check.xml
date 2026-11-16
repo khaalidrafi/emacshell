@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The big tap target: check state on/off/skip/unknown is shown as
+     a glyph, colored by the habit color when checked.  The whole
+     button is the tap target (no background, big touch area). -->
+<Button xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/elwidget_check"
+    android:layout_width="40dp"
+    android:layout_height="40dp"
+    android:layout_marginEnd="6dp"
+    android:minWidth="40dp"
+    android:minHeight="40dp"
+    android:background="@android:color/transparent"
+    android:textSize="20sp"
+    android:textStyle="bold"
+    android:textColor="#a6e3a1" />
