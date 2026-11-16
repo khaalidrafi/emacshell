@@ -69,5 +69,73 @@ plain apps the ability to execute the system am wrapper."
                         user-emacs-directory)
       nil t)
 
+;; elwidget + loophabits -- home-screen widgets and the habit tracker,
+;; vendored by the app the same way eservo is (README "Widgets" and
+;; "Habit tracker").  Lazy autoloads keep startup cost at zero.
+(load (expand-file-name "site-lisp/elwidget/elwidget-autoloads.el"
+                        user-emacs-directory)
+      nil t)
+(load (expand-file-name "site-lisp/loophabits/loophabits-autoloads.el"
+                        user-emacs-directory)
+      nil t)
+
+;; Habit tracker + widgets, wired for a phone (2026-11-15): after 3
+;; idle seconds register the built-in Org widgets, render every spec,
+;; start the tap poller (15 s) and the reminder checker (60 s).  A
+;; focus-in sync drains whatever taps happened while Android had us
+;; frozen, then re-renders -- that is the whole trick to widgets on a
+;; phone.
+(run-with-idle-timer 3 nil
+  (lambda ()
+    (require 'elwidget-org)
+    (elwidget-org-register-widgets)
+    (elwidget-refresh)
+    (elwidget-start)
+    (loophabits-start-reminders)))
+(add-hook 'focus-in-hook #'elwidget-sync)
+
+;; Org files for the agenda/tasks widgets; defaults to ~/org/*.org
+;; when that directory exists (create habits with M-x loophabits --
+;; they live in ~/org/habits.org by default, already inside this).
+(when (and (file-directory-p "~/org")
+           (not (bound-and-true-p org-agenda-files)))
+  (setq org-agenda-files
+        (directory-files (expand-file-name "~/org") t "\\.org\\'" t)))
+
+;;; Mail (Gnus over IMAP + SMTP) -------------------------------------
+;; Built into Emacs; nothing external to install on Android.  Put
+;; your account in ~/.authinfo (chmod 600), one line per server:
+;;
+;;   machine imap.gmail.com login you@gmail.com port 993 password APP-PASSWORD
+;;   machine smtp.gmail.com login you@gmail.com port 465 password APP-PASSWORD
+;;
+;; (Gmail needs an app password; most providers work with the normal
+;; one.)  Then edit the two servers below if needed and run M-x gnus.
+(defvar emacshell-mail-imap-server "imap.gmail.com"
+  "IMAP server Gnus reads mail from (nnimap, SSL/993).")
+(defvar emacshell-mail-smtp-server "smtp.gmail.com"
+  "SMTP server Gnus sends mail through (SSL/465).")
+(defvar emacshell-mail-smtp-service 465
+  "SMTP port; 465 for implicit TLS.")
+
+(with-eval-after-load 'gnus
+  (setq gnus-select-method
+        `(nnimap ""
+                 (nnimap-address ,emacshell-mail-imap-server)
+                 (nnimap-server-port 993)
+                 (nnimap-stream ssl))
+        ;; Phone niceties: no exit interrogation, keep summaries
+        ;; small, single-level threads.
+        gnus-interactive-exit nil
+        gnus-large-newsgroup 200
+        gnus-thread-hide-subtree t)
+  (setq message-send-mail-function 'smtpmail-send-it
+        smtpmail-smtp-server emacshell-mail-smtp-server
+        smtpmail-smtp-service emacshell-mail-smtp-service
+        smtpmail-stream-type 'ssl
+        smtpmail-smtp-user nil)          ; from ~/.authinfo
+  ;; Reading offline: the nnimap agent caches fetched articles.
+  (setq gnus-agent t))
+
 ;;; init.el ends here
 

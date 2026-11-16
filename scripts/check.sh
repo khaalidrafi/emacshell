@@ -160,6 +160,25 @@ if grep -qE '^repo=https://github\.com/termux/termux-packages$' pins/termux-pack
 else
     bad "pins/termux-packages.txt is well-formed"
 fi
+# Vendored Elisp packages (eservo, elwidget, loophabits): pin files
+# well-formed AND the vendored assets still match their sha256 lists.
+for pkg in eservo elwidget loophabits; do
+    if grep -qE "^repo=https://github\.com/khaalidrafi/${pkg}$" "pins/${pkg}.txt" \
+       && grep -qE '^branch=ai/main$' "pins/${pkg}.txt" \
+       && grep -qE '^commit=[0-9a-f]{40}$' "pins/${pkg}.txt"; then
+        ok "pins/${pkg}.txt is well-formed (repo/branch/commit)"
+    else
+        bad "pins/${pkg}.txt is well-formed"
+    fi
+    if [ -f "pins/${pkg}.sha256" ] \
+       && (cd "app/src/emacshell/assets/emacshell/${pkg}" \
+             && sha256sum --check --quiet "../../../../../../pins/${pkg}.sha256"); then
+        ok "vendored ${pkg} assets match pins/${pkg}.sha256"
+    else
+        bad "vendored ${pkg} assets match pins/${pkg}.sha256"
+    fi
+done
+
 if grep -qE '^url=https://.+/alpine-minirootfs-.+-aarch64\.tar\.gz$' pins/alpine-rootfs-aarch64.sha256 \
    && grep -qE '^sha256=[0-9a-f]{64}$' pins/alpine-rootfs-aarch64.sha256; then
     ok "pins/alpine-rootfs-aarch64.sha256 is well-formed"

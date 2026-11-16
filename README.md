@@ -140,6 +140,49 @@ Existing installs whose first-boot `init.el` predates eservo: add
 
 to your `init.el` (or uninstall + reinstall for a fresh first boot).
 
+## Widgets — home-screen widgets in Elisp
+
+emacshell ships [elwidget](https://github.com/khaalidrafi/elwidget), a
+widget maker: you define Android home-screen widgets in Elisp, the app
+renders them as real AppWidgets, and taps flow back into Emacs.
+
+Long-press the home screen, pick **Emacs Widget 4x1 / 4x2 / 4x3**, and
+choose one of the specs Emacs has written under
+`~/.emacs.d/elwidget/specs/` (the built-in Org widgets are
+`org-agenda`, `org-tasks`, `org-habits`, `org-clock`, `org-table`;
+define your own with `M-x elwidget-define` — see the
+[elwidget README](https://github.com/khaalidrafi/elwidget)).
+
+On Android 12+ each node (check, button) is its own tap target; on
+Android 9–11 the widget renders identically but the whole surface is a
+single open-Emacs tap (`RemoteViews.addView` does not exist there).
+The habit check marks flip instantly via a shadow state file; Emacs is
+authoritative again on the next sync (the first-boot `init.el` wires
+`focus-in-hook` + a 15 s poller + a 60 s reminder checker).
+
+## Habit tracker — Loop Habit Tracker on Org files
+
+[loophabits](https://github.com/khaalidrafi/loophabits) ships in the
+APK: ALL the features of Loop Habit Tracker (iSoron/uhabits) — yes/no,
+measurable and at-most habits, flexible schedules, the real Loop score
+and streak math, per-weekday stats, a 365-day history grid, reminders,
+CSV/JSON export — on one plain Org file (`~/org/habits.org`). `M-x
+loophabits` opens the dashboard; `n` creates a habit. The
+**org-habits** home-screen widget (above) shows today's list with
+tap-to-check marks straight on the home screen.
+
+## Mail — Gnus over IMAP
+
+The first-boot `init.el` configures Gnus (built into Emacs; nothing to
+install) for one IMAP account plus SMTP. Put your credentials in
+`~/.authinfo` (see the comments in `init.el`; Gmail needs an app
+password), adjust `emacshell-mail-imap-server` /
+`emacshell-mail-smtp-server` if you do not use Gmail, then `M-x gnus`.
+The GNU Emacs Android port bundles GnuTLS, so `nnimap-stream ssl`
+works out of the box. Existing installs: the same block is documented
+in the `init.el` template — copy it from the repository's
+`app/src/termux/assets/emacshell/init.el`.
+
 ## Building from source
 
 Requirements: JDK 17, Android SDK (platform 35, build-tools 35.0.0,

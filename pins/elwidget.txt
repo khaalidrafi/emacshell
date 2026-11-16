@@ -1,0 +1,17 @@
+# elwidget source pin.
+#
+# Vendored into this repository as app/src/emacshell/assets/emacshell/
+# elwidget/ (elwidget.el + elwidget-org.el + the generated
+# elwidget-autoloads.el + the GPL LICENSE).  elwidget is the widget
+# maker: users write home-screen widgets in Elisp, the app renders
+# them as Android AppWidgets (see the ElwidgetProvider host in
+# app/src/main/java/tech/khalidrafi/emacshell/elwidget/) and taps flow
+# back through the file contract.  Re-vendor only by moving this pin:
+# copy the .el files at the pinned commit, regenerate
+# elwidget-autoloads.el from them (batch: emacs -L . -l loaddefs-gen,
+# loaddefs-generate default-directory "elwidget-autoloads.el"), keep
+# the sha256 list below in sync.
+
+repo=https://github.com/khaalidrafi/elwidget
+branch=ai/main
+commit=60e9282f0fe4e8c885d0971695ef593b1849720f
