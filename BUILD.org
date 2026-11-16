@@ -40,12 +40,29 @@ style; namespaces live in our =build.gradle= files).
 :terminal-view      library
 #+END_EXAMPLE
 
-The eservo Elisp package is vendored under
-=app/src/emacshell/assets/emacshell/eservo/= (pin: =pins/eservo.txt= +
-=pins/eservo.sha256=); =EmacshellApplication.installEservo()= copies it to
-=files/.emacs.d/site-lisp/eservo/= on every boot and prepends that dir to
-=EMACSLOADPATH=.  Unlike early-init/init.el these files are APP code and are
-overwritten on upgrade by design.
+Vendored Elisp packages live under
+=app/src/emacshell/assets/emacshell/<name>/= with pins in
+=pins/<name>.txt= + =pins/<name>.sha256=:
+
+| Package | What it is |
+|---|---|
+| =eservo= | embedded browser automation |
+| =elwidget= | the widget maker (specs drawn by the AppWidget host) |
+| =loophabits= | the habit tracker (Loop Habit Tracker on Org) |
+
+=EmacshellApplication.installVendoredPackages()= copies each to
+=files/.emacs.d/site-lisp/<name>/= on every boot and puts all of them on
+=EMACSLOADPATH=.  Unlike early-init/init.el these files are APP code and
+are overwritten on upgrade by design.  Re-vendor only by moving the pin:
+copy the .el files at the pinned commit, regenerate the autoloads file
+(batch: =emacs -L . -l loaddefs-gen=, =loaddefs-generate= on the asset
+dir), keep the sha256 list in sync; =scripts/check.sh= verifies both.
+
+The elwidget Android half lives in
+=app/src/main/java/tech/khalidrafi/emacshell/elwidget/= (provider,
+renderer, configure activity, file watcher) with its resources under
+=app/src/emacshell/res/= (never =src/main/res=, which re-vendoring from
+termux-app wipes).
 
 =app= has =namespace com.termux= but a different =applicationId= (AGP
 allows this) because the vendored sources import =com.termux.R=.  The

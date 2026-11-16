@@ -73,7 +73,7 @@ public final class EmacshellApplication extends Application
 
         /* --- Emacshell glue --- */
         installUserInitFiles();
-        installEservo();
+        installVendoredPackages();
 
         /* elwidget home-screen widgets: watch the spec tree so bound
            widgets re-draw while this process (which also hosts Emacs)
@@ -177,36 +177,52 @@ public final class EmacshellApplication extends Application
     }
 
     /* ------------------------------------------------------------------ */
-    /* eservo -- the embedded browser-automation package.                  */
+    /* Vendored Elisp packages (site-lisp).                                */
     /* ------------------------------------------------------------------ */
 
     /**
-     * The vendored eservo Elisp package (app/src/emacshell/assets/
-     * emacshell/eservo/, pinned by pins/eservo.txt) is APP code, not user
-     * configuration, so unlike early-init.el/init.el it is re-installed
-     * on every boot: upgrading emacshell upgrades eservo.  User edits to
-     * these files have no promise of survival; local customization goes
-     * into the user-owned init.el instead (see README).
-     *
-     * The directory is also prepended to EMACSLOADPATH so the package is
-     * on the load-path for EVERY install -- including installs whose
-     * first-boot init.el predates this feature (those files are
-     * user-owned and are never rewritten).  The trailing empty element
-     * keeps Emacs's default load-path intact: an empty element in
-     * EMACSLOADPATH stands for the default list.
+     * Elisp packages shipped as app code (never user config): eservo
+     * (browser automation), elwidget (the widget maker whose specs
+     * the AppWidget host renders) and loophabits (the habit tracker
+     * the org-habits widget reads).  Pinned by pins/<name>.txt +
+     * pins/<name>.sha256.
      */
-    private void installEservo() {
-        File siteDir = new File(getFilesDir(), ".emacs.d/site-lisp/eservo");
-        if (!siteDir.isDirectory() && !siteDir.mkdirs()) {
-            Logger.logError(LOG_TAG, "Cannot create " + siteDir
-                    + "; eservo not installed");
-            return;
-        }
-        installAssetDirRecursive("emacshell/eservo", siteDir);
+    private static final String[] VENDORED_PACKAGES =
+            {"eservo", "elwidget", "loophabits"};
 
-        String eservoPath = siteDir.getAbsolutePath();
+    /**
+     * These packages are re-installed on every boot: upgrading
+     * emacshell upgrades them.  User edits to these files have no
+     * promise of survival; local customization goes into the
+     * user-owned init.el instead (see README).
+     *
+     * Each directory is also put on EMACSLOADPATH so the packages are
+     * loadable for EVERY install -- including installs whose
+     * first-boot init.el predates a given package (those files are
+     * user-owned and are never rewritten).  The trailing empty
+     * element keeps Emacs's default load-path intact: an empty
+     * element in EMACSLOADPATH stands for the default list.
+     */
+    private void installVendoredPackages() {
+        File siteLisp = new File(new File(getFilesDir(), ".emacs.d"),
+                "site-lisp");
+        StringBuilder path = new StringBuilder();
+        for (String name : VENDORED_PACKAGES) {
+            File dir = new File(siteLisp, name);
+            if (!dir.isDirectory() && !dir.mkdirs()) {
+                Logger.logError(LOG_TAG, "Cannot create " + dir
+                        + "; " + name + " not installed");
+                continue;
+            }
+            installAssetDirRecursive("emacshell/" + name, dir);
+            if (path.length() > 0)
+                path.append(':');
+            path.append(dir.getAbsolutePath());
+        }
+        if (path.length() == 0)
+            return;
         String existing = System.getenv("EMACSLOADPATH");
-        String loadpath = eservoPath + ":"
+        String loadpath = path + ":"
                 + (existing == null ? "" : existing);
         try {
             Os.setenv("EMACSLOADPATH", loadpath, true);
@@ -244,7 +260,8 @@ public final class EmacshellApplication extends Application
             }
         } catch (IOException e) {
             Logger.logErrorExtended(LOG_TAG,
-                    "Failed to install eservo assets: " + e.getMessage());
+                    "Failed to install vendored package assets: "
+                            + e.getMessage());
         }
     }
 
