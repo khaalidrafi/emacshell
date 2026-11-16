@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The widget configuration screen (ElwidgetConfigureActivity):
+     one row per spec on disk. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical" >
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:padding="12dp"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        android:text="@string/elwidget_configure_title" />
+
+    <ListView
+        android:id="@+id/elwidget_list"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <TextView
+        android:id="@+id/elwidget_empty"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:padding="16dp"
+        android:textSize="14sp"
+        android:visibility="gone"
+        android:text="@string/elwidget_configure_empty" />
+
+</LinearLayout>

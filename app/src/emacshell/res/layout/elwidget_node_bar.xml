@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Bar node: thin colored rule.  Plain View is not remotable, so the
+     drawable surface is a fixed-height FrameLayout colored at
+     runtime via setBackgroundColor. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/elwidget_bar"
+    android:layout_width="match_parent"
+    android:layout_height="2dp"
+    android:layout_marginTop="2dp"
+    android:layout_marginBottom="2dp" />

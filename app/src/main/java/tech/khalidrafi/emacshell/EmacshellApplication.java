@@ -17,6 +17,8 @@ import com.termux.shared.settings.preferences.TermuxAppSharedPreferences;
 import org.gnu.emacs.EmacsApplication;
 import org.gnu.emacs.EmacsNative;
 
+import tech.khalidrafi.emacshell.elwidget.ElwidgetWatcher;
+
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -72,6 +74,11 @@ public final class EmacshellApplication extends Application
         /* --- Emacshell glue --- */
         installUserInitFiles();
         installEservo();
+
+        /* elwidget home-screen widgets: watch the spec tree so bound
+           widgets re-draw while this process (which also hosts Emacs)
+           is alive.  No-op until Emacs has created the tree once. */
+        ElwidgetWatcher.ensure(this);
 
         /* TermuxInstaller.setupBootstrapIfNeeded needs an Activity for
            its progress and error dialogs, so the bootstrap is started
