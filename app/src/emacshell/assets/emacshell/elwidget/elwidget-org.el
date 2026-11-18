@@ -2,7 +2,7 @@
 
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;; Author: GLM 5.3 <glm-5.3@z.ai>
-;; Version: 0.1.0
+;; Version: 0.2.0
 ;; Package-Requires: ((emacs "27.1") (org "9.3"))
 ;; Keywords: widgets, org, android
 
@@ -13,12 +13,28 @@
 ;;
 ;;   org-agenda  -- today's schedule (times + headings)
 ;;   org-tasks   -- next TODO entries, tappable to DONE
-;;   org-habits  -- the habit list (needs the loophabits package)
+;;   org-habits  -- the habit list (loophabits when installed, else
+;;                  Org's own STYLE=habit entries)
 ;;   org-clock   -- what is clocked right now + duration
 ;;   org-table   -- a named org table, rendered as rows
 ;;
-;; Everything renders OFFLINE from the files; no network, no fancy
-;; parsing.  `(elwidget-org-register-widgets)' defines all of them.
+;; Everything renders OFFLINE from the files; no network.  The
+;; widgets reuse existing Org features instead of reimplementing
+;; them (Owner order 2026-11-18): entry collection goes through
+;; `org-map-entries' (the agenda's own scanner, archived subtrees
+;; skipped like the agenda does); "is this timestamp due today" is
+;; delegated to `org-time-string-to-absolute' and `org-today', so
+;; cyclic timestamps (repeaters) land on their next occurrence
+;; instead of only on their start date; TODO state, doneness and
+;; headings come from `org-entry-is-todo-p', `org-entry-is-done-p'
+;; and `org-get-heading'; stable tap ids are minted by
+;; `org-id-get-create' AT the collected entry (no heading-text
+;; matching); habit detection is Org's STYLE=habit convention
+;; (`org-is-habit-p' from the built-in org-habit library); and
+;; table rows are split by `org-table-to-lisp' once `org-element'
+;; has located the named table.
+;;
+;; `(elwidget-org-register-widgets)' defines all of them.
 
 ;;; Code:
 
@@ -31,6 +47,7 @@
 
 (declare-function loophabits-toggle "loophabits" (id))
 (declare-function loophabits-elwidget-tree "loophabits" ())
+(declare-function org-is-habit-p "org-habit" (&optional epom))
 
 (defgroup elwidget-org nil
   "Org-built widgets for the elwidget widget maker."
@@ -42,6 +59,10 @@
 
 (defcustom elwidget-org-task-count 7
   "How many TODO rows the org-tasks widget shows."
+  :type 'natnum)
+
+(defcustom elwidget-org-habit-count 7
+  "How many rows the built-in org-habits fallback shows."
   :type 'natnum)
 
 (defcustom elwidget-org-agenda-count 10
@@ -60,18 +81,61 @@
   "Files to scan."
   (or elwidget-org-agenda-files (org-agenda-files)))
 
-;;; --- org-agenda ------------------------------------------------------------
+;;; --- entry collection --------------------------------------------------------
 
-(defun elwidget-org--timestamp-today-p (ts)
-  "Non-nil when timestamp element TS starts today."
-  (let ((now (decode-time)))
-    (and (org-element-property :year-start ts)
-         (= (org-element-property :year-start ts) (nth 5 now))
-         (= (org-element-property :month-start ts) (nth 4 now))
-         (= (org-element-property :day-start ts) (nth 3 now)))))
+(defun elwidget-org--collect (predicate)
+  "Collect (TITLE KEYWORD DONE ID) for entries where PREDICATE holds.
+PREDICATE runs with point at the headline, `org-map-entries'
+style, so it can call `org-entry-get', `org-is-habit-p' and
+friends directly.  Collection itself is Org's scanner:
+`org-map-entries' walks each file (archived subtrees skipped,
+like the agenda), `org-get-heading' and `org-get-todo-state'
+produce the title and keyword, and `org-id-get-create' mints the
+stable tap id AT the entry -- no heading-text matching.  A file
+is saved only when an id was actually minted in it."
+  (let (out)
+    (dolist (file (elwidget-org--files))
+      (when (file-exists-p file)
+        (with-current-buffer (find-file-noselect file)
+          (let ((minted nil))
+            (dolist (entry (org-map-entries
+                            (lambda ()
+                              (when (funcall predicate)
+                                (unless (org-entry-get (point) "ID")
+                                  (setq minted t))
+                                (list (org-get-heading t t)
+                                      (org-get-todo-state)
+                                      (org-entry-is-done-p)
+                                      (org-id-get-create))))
+                            nil 'file 'archive))
+              (when entry (push entry out)))
+            (when minted (save-buffer))))))
+    (nreverse out)))
+
+;;; --- org-agenda --------------------------------------------------------------
+
+(defun elwidget-org--timestamp-due-today-p (ts)
+  "Non-nil when timestamp element TS is due today.
+The date arithmetic is Org's own: for a cyclic timestamp
+`org-time-string-to-absolute' returns the occurrence closest to
+the day number given as second argument, so an exact match with
+`org-today' means today IS an occurrence -- repeaters land on
+their next occurrence, not only their start date.  Diary sexp
+timestamps that do not match today are skipped: the conversion
+signals `org-diary-sexp-no-match' for them."
+  (and (eq 'active (org-element-property :type ts))
+       (condition-case nil
+           (= (org-time-string-to-absolute
+               (org-element-property :raw-value ts)
+               (org-today))
+              (org-today))
+         (org-diary-sexp-no-match nil))))
 
 (defun elwidget-org--entries-for-today ()
-  "Today's scheduled/deadline entries: ((TIME TITLE)...) sorted."
+  "Today's scheduled/deadline entries: ((TIME TITLE)...) sorted.
+Collection mirrors the agenda's own approach: `org-element'
+parses each file and keeps active SCHEDULED/DEADLINE timestamps
+that are due today (see `elwidget-org--timestamp-due-today-p')."
   (let (entries)
     (dolist (file (elwidget-org--files))
       (when (file-exists-p file)
@@ -83,9 +147,7 @@
               (let ((ts (or (org-element-property :scheduled h)
                             (org-element-property :deadline h))))
                 (when (and ts
-                           (eq 'active
-                               (org-element-property :type ts))
-                           (elwidget-org--timestamp-today-p ts))
+                           (elwidget-org--timestamp-due-today-p ts))
                   (let ((hour (org-element-property :hour-start ts))
                         (min (org-element-property :minute-start ts)))
                     (push (list (if hour
@@ -115,50 +177,13 @@
       (nconc nodes (list '(:text "Nothing scheduled today" :size 13))))
     nodes))
 
-;;; --- org-tasks -------------------------------------------------------------
+;;; --- org-tasks ---------------------------------------------------------------
 
 (defun elwidget-org--todo-entries ()
-  "Open TODO entries as (TITLE KEYWORD FILE), file by file."
-  (let ((out nil))
-    (dolist (file (elwidget-org--files))
-      (when (file-exists-p file)
-        (with-temp-buffer
-          (insert-file-contents file)
-          (org-mode)
-          (org-element-map (org-element-parse-buffer) 'headline
-            (lambda (h)
-              (when (eq 'todo (org-element-property :todo-type h))
-                (push (list (org-element-property :raw-value h)
-                            (org-element-property :todo-keyword h)
-                            file)
-                      out)))))))
-    (nreverse out)))
-
-(defun elwidget-org--ensure-id (file title)
-  "Return a stable org-id for FILE's heading TITLE, creating one.
-The id persists in the file so widget taps keep working across
-process restarts.  The buffer is saved only when an id was created."
-  (let ((id nil)
-        (patterns nil))
-    (with-current-buffer (find-file-noselect file)
-      (save-excursion
-        (save-restriction
-          (widen)
-          ;; Match "* KEYWORD Title" first, then plain "* Title".
-          (setq patterns
-                (list (concat "^[*]+[ \t]+[^ \t]+[ \t]+"
-                             (regexp-quote title) "[ \t]*$")
-                      (concat "^[*]+[ \t]+"
-                             (regexp-quote title) "[ \t]*$")))
-          (while (and patterns (null id))
-            (goto-char (point-min))
-            (when (re-search-forward (car patterns) nil t)
-              (setq id (org-entry-get (point) "ID"))
-              (unless id
-                (setq id (org-id-get-create))
-                (save-buffer)))
-            (setq patterns (cdr patterns)))))
-      id)))
+  "Open TODO entries as (TITLE KEYWORD DONE ID), file by file.
+Openness is decided by `org-entry-is-todo-p'; collection and id
+minting happen in `elwidget-org--collect'."
+  (elwidget-org--collect #'org-entry-is-todo-p))
 
 (defun elwidget-org--tasks-render ()
   "Render the org-tasks widget tree (a LIST of nodes)."
@@ -169,23 +194,24 @@ process restarts.  The buffer is saved only when an id was created."
     (dolist (e shown)
       (let* ((title (nth 0 e))
              (kw (nth 1 e))
-             (file (nth 2 e))
-             (id (elwidget-org--ensure-id file title)))
-        (when id
-          (nconc nodes
-                 (list
-                  `(:row (:check off :action "org-todo" :arg ,id
-                                 :color ,elwidget-org-done-color)
-                         (:text ,(truncate-string-to-width
-                                  (concat (when kw (concat kw " ")) title)
-                                  34 nil nil "...")
-                                :size 13)))))))
+             (id (nth 3 e)))
+        (nconc nodes
+               (list
+                `(:row (:check off :action "org-todo" :arg ,id
+                               :color ,elwidget-org-done-color)
+                       (:text ,(truncate-string-to-width
+                                (concat (when kw (concat kw " ")) title)
+                                34 nil nil "...")
+                              :size 13))))))
     (unless entries
       (nconc nodes (list '(:text "No open tasks" :size 13))))
     nodes))
 
-(defun elwidget-org--tasks-on-event (action arg)
-  "Handle org-tasks taps: ACTION org-todo toggles heading id ARG."
+(defun elwidget-org--todo-on-event (action arg)
+  "Handle an \"org-todo\" tap: cycle the entry with org-id ARG.
+`org-id-find' locates the heading (ids are minted at collection
+time), then `org-todo' does the actual state change -- including
+Org's habit semantics when the entry carries a repeater."
   (when (equal action "org-todo")
     (let ((m (ignore-errors (org-id-find arg 'marker))))
       (when (and m (marker-buffer m))
@@ -197,22 +223,48 @@ process restarts.  The buffer is saved only when an id was created."
               (org-todo)
               t)))))))
 
-;;; --- org-habits ------------------------------------------------------------
+;;; --- org-habits --------------------------------------------------------------
 
 (defun elwidget-org--habits-render ()
-  "Render the org-habits widget tree (needs the loophabits package)."
+  "Render the org-habits widget tree.
+With the personal loophabits package installed, delegate to it
+(shadow state, instant flips).  Otherwise render Org's own habit
+convention -- STYLE=habit entries, as understood by the built-in
+org-habit library -- instead of demanding an external package:
+reuse over reimplementation (Owner order 2026-11-18)."
   (if (require 'loophabits nil t)
       (loophabits-elwidget-tree)
-    '(:text "Install the loophabits package" :size 12)))
+    (if (require 'org-habit nil t)
+        (let* ((entries (elwidget-org--collect #'org-is-habit-p))
+               (shown (seq-take entries elwidget-org-habit-count)))
+          (if (null entries)
+              '(:text "No STYLE=habit entries" :size 13)
+            (append
+             (list `(:text "Habits" :size 16 :bold t
+                           :color ,elwidget-org-accent))
+             (mapcar
+              (lambda (e)
+                `(:row (:check ,(if (nth 2 e) t 'off)
+                               :action "org-todo" :arg ,(nth 3 e)
+                               :color ,elwidget-org-done-color)
+                       (:text ,(truncate-string-to-width
+                                (nth 0 e) 30 nil nil "...")
+                              :size 13)))
+              shown))))
+      '(:text "org-habit is not available" :size 13))))
 
 (defun elwidget-org--habits-on-event (action arg)
-  "Forward habit widget taps to loophabits."
-  (when (and (require 'loophabits nil t)
-             (equal action "toggle"))
-    (loophabits-toggle arg)
-    t))
+  "Handle habit taps.
+\"toggle\" goes to loophabits when it is installed; the built-in
+habit list reuses the org-tasks tap (`elwidget-org--todo-on-event')."
+  (cond ((and (require 'loophabits nil t)
+              (equal action "toggle"))
+         (loophabits-toggle arg)
+         t)
+        ((equal action "org-todo")
+         (elwidget-org--todo-on-event action arg))))
 
-;;; --- org-clock -------------------------------------------------------------
+;;; --- org-clock ---------------------------------------------------------------
 
 (defun elwidget-org--clock-render ()
   "Render the org-clock widget tree."
@@ -234,41 +286,32 @@ process restarts.  The buffer is saved only when an id was created."
                 :bar :height 2 :color "#45475a"))
     '(:text "Not clocked in" :size 14)))
 
-;;; --- org-table -------------------------------------------------------------
+;;; --- org-table ---------------------------------------------------------------
 
 (defun elwidget-org--table-rows (file name &optional max-rows)
-  "Rows of the #+NAME: NAME table in FILE, as lists of strings."
-  (let ((rows nil)
-        (in-table nil)
-        (want (regexp-quote name)))
-    (when (file-exists-p file)
-      (with-temp-buffer
-        (insert-file-contents file)
-        (goto-char (point-min))
-        (while (not (eobp))
-          (cond
-           ((and (looking-at (concat "#\\+NAME:[ \t]+" want "[ \t]*$")))
-            (setq in-table 'waiting))
-           ((and (eq in-table 'waiting)
-                 (looking-at "[ \t]*|"))
-            (setq in-table t))
-           ((and (eq in-table t) (not (looking-at "[ \t]*|")))
-            (setq in-table nil)))
-          (when (and (eq in-table t)
-                     (not (looking-at "[ \t]*|[ \t]*[-:]"))
-                     (or (null max-rows) (< (length rows) max-rows)))
-            (let ((cells (split-string
-                          (buffer-substring-no-properties
-                           (line-beginning-position)
-                           (line-end-position))
-                          "|" t "[ \t]+")))
-              (push (mapcar (lambda (c)
-                              (replace-regexp-in-string
-                               "^[ \t]+\\|[ \t]+$" "" c))
-                            cells)
-                    rows)))
-          (forward-line 1))))
-    (nreverse rows)))
+  "Rows of the #+NAME (or legacy #+TBLNAME) table NAME in FILE.
+Both halves are Org's: `org-element' locates the named table
+(affiliated keywords handled exactly as Org handles them), and
+`org-table-to-lisp' splits it into rows of cell strings.  Its
+`hline' separator rows are dropped.  Return at most MAX-ROWS
+rows, as lists of strings."
+  (when (file-exists-p file)
+    (with-temp-buffer
+      (insert-file-contents file)
+      (org-mode)
+      (let ((tbl nil))
+        (org-element-map (org-element-parse-buffer) 'table
+          (lambda (node)
+            (when (and (null tbl)
+                       (equal (org-element-property :name node) name))
+              (setq tbl node))))
+        (when tbl
+          (let ((rows (org-table-to-lisp
+                       (buffer-substring-no-properties
+                        (org-element-property :contents-begin tbl)
+                        (org-element-property :contents-end tbl)))))
+            (seq-take (seq-remove (lambda (r) (eq r 'hline)) rows)
+                      (or max-rows (length rows)))))))))
 
 (defun elwidget-org--table-render (file name)
   "Render the org table NAME in FILE as widget rows."
@@ -295,7 +338,7 @@ process restarts.  The buffer is saved only when an id was created."
   (elwidget-define "org-tasks"
     :title "Org tasks (tap to close)" :size [4 2]
     :render #'elwidget-org--tasks-render
-    :on-event #'elwidget-org--tasks-on-event)
+    :on-event #'elwidget-org--todo-on-event)
   (elwidget-define "org-habits"
     :title "Habit list (tap to check)" :size [4 3]
     :render #'elwidget-org--habits-render
