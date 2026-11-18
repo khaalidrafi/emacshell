@@ -185,6 +185,20 @@ if [ "${flavor}" = "distro" ]; then
     build_args+=(--add proot --add proot-distro)
 fi
 
+# --- make the checkout root writable by the container user ---------------------
+# run-docker.sh bind-mounts this checkout at /home/builder/termux-packages
+# and the builder image runs as `builder` (uid 1000); the CI runner user
+# owns the clone (uid 1001, mode 755).  Upstream build-bootstraps.sh ends
+# with `mv -f "${BOOTSTRAP_TMPDIR}/bootstrap-${arch}.zip"
+# "$TERMUX_PACKAGES_DIRECTORY/"` -- a write into the repo ROOT of the
+# bind mount, the one place `builder` cannot write.  Run 44333060244:
+# the entire ~100-package build succeeded and ONLY this final mv failed
+# ("Permission denied"), losing ~2h of CI per flavor on a permissions
+# detail.  Widen the TOP directory only (non-recursive: package builds
+# happen inside the container's own ~/.termux-build; the repo root is
+# touched only by the final zip mv), so the zip can land.
+chmod a+w "${src}"
+
 (
     cd "${src}"
     # The MODERN variable name is what properties.sh actually consumes
