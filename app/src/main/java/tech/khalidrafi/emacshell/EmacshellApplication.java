@@ -182,13 +182,12 @@ public final class EmacshellApplication extends Application
 
     /**
      * Elisp packages shipped as app code (never user config): eservo
-     * (browser automation), elwidget (the widget maker whose specs
-     * the AppWidget host renders) and loophabits (the habit tracker
-     * the org-habits widget reads).  Pinned by pins/<name>.txt +
+     * (browser automation) and elwidget (the widget maker whose specs
+     * the AppWidget host renders).  Pinned by pins/<name>.txt +
      * pins/<name>.sha256.
      */
     private static final String[] VENDORED_PACKAGES =
-            {"eservo", "elwidget", "loophabits"};
+            {"eservo", "elwidget"};
 
     /**
      * These packages are re-installed on every boot: upgrading

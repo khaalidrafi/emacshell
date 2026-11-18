@@ -43,3 +43,4 @@ app/src/distro/assets/emacshell/alpine-rootfs.tar.gz
 .idea/
 *.iml
 .vscode/
+scripts/__pycache__/
