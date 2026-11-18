@@ -35,6 +35,13 @@ must be made overridable; see REVIEW.org "Bootstrap upstream patches").
 `scripts/build-bootstrap.sh` automates it; `.github/workflows/bootstrap.yml`
 runs it in CI.
 
+The termux-packages tree itself is pinned to a **release tag**
+(`pins/termux-packages.txt`: `bootstrap-YYYY.MM.DD-rN+apt.android-N`,
+verified against `git ls-remote` on every build -- Owner order
+2026-11-18, "You should use a release version"): those tags mark the
+trees that produced official Termux bootstraps, while master moves
+hourly and its middle states are nobody's release.
+
 The distro flavor's bootstrap adds `proot` and `proot-distro`
 (`--add proot --add proot-distro`) so `M-x emacshell-distro-login`
 works on first boot without any network round-trip.

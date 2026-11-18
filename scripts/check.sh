@@ -154,11 +154,17 @@ if grep -q '^tag=v0\.118\.3$' pins/termux-app.txt \
 else
     bad "pins/termux-app.txt is well-formed"
 fi
+# Law: termux-packages is pinned to a RELEASE TAG (the bootstrap-*
+# tags upstream cuts when it publishes official bootstraps), never to
+# a raw master commit (Owner order 2026-11-18).  scripts/build-bootstrap.sh
+# additionally verifies with git ls-remote that the tag resolves to
+# the pinned commit before building.
 if grep -qE '^repo=https://github\.com/termux/termux-packages$' pins/termux-packages.txt \
+   && grep -qE '^tag=bootstrap-[0-9]{4}\.[0-9]{2}\.[0-9]{2}-r[0-9]+' pins/termux-packages.txt \
    && grep -qE '^commit=[0-9a-f]{40}$' pins/termux-packages.txt; then
-    ok "pins/termux-packages.txt is well-formed"
+    ok "pins/termux-packages.txt is well-formed (release tag + commit)"
 else
-    bad "pins/termux-packages.txt is well-formed"
+    bad "pins/termux-packages.txt is well-formed (release tag + commit)"
 fi
 # Vendored Elisp packages (eservo, elwidget): pin files
 # well-formed AND the vendored assets still match their sha256 lists.

@@ -164,14 +164,27 @@ packages hardcode =/data/data/com.termux/files/usr=; emacshell lives
 at a different path, so the official bootstrap installs binaries that
 all point into another app's data directory.  The termux-packages
 maintainers' sanctioned fix (issue #24396) is building the bootstrap
-with =TERMUX_APP_PACKAGE=<applicationId>=, which is what this script
-does in their Docker builder:
+with the applicationId exported as =TERMUX_APP__PACKAGE_NAME=
+(the current variable name; the deprecated =TERMUX_APP_PACKAGE= is
+exported too -- both names, because the pin can move in either
+direction), which is what this script does in their Docker builder:
 
 #+BEGIN_EXAMPLE
-TERMUX_DOCKER_EXEC_EXTRA_ARGS="--env TERMUX_APP_PACKAGE=$app_id" \
+TERMUX_DOCKER_EXEC_EXTRA_ARGS="--env TERMUX_APP__PACKAGE_NAME=$app_id \
+  --env TERMUX_APP_PACKAGE=$app_id" \
   ./scripts/run-docker.sh ./scripts/build-bootstraps.sh \
       --architectures aarch64 [--add proot --add proot-distro]
 #+END_EXAMPLE
+
+The termux-packages tree being built is pinned to a **release tag**
+in =pins/termux-packages.txt= (=bootstrap-YYYY.MM.DD-rN+apt.android-N=,
+the tags upstream cuts when it publishes official bootstraps -- Owner
+order 2026-11-18: "You should use a release version").  The script
+verifies via =git ls-remote= that the tag still resolves to the pinned
+commit before starting the (one- to two-hour) build, and =check.sh=
+enforces the tag's shape; two post-clone patches cover upstream drifts
+(bzip2 removal, the hard-assigned package name -- REVIEW.org
+"Bootstrap upstream patches").
 
 The distro flavor's bootstrap adds =proot= and =proot-distro= so the
 first =M-x emacshell-distro-login= needs no network round-trip.
