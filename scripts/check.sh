@@ -160,9 +160,9 @@ if grep -qE '^repo=https://github\.com/termux/termux-packages$' pins/termux-pack
 else
     bad "pins/termux-packages.txt is well-formed"
 fi
-# Vendored Elisp packages (eservo, elwidget, loophabits): pin files
+# Vendored Elisp packages (eservo, elwidget): pin files
 # well-formed AND the vendored assets still match their sha256 lists.
-for pkg in eservo elwidget loophabits; do
+for pkg in eservo elwidget; do
     if grep -qE "^repo=https://github\.com/khaalidrafi/${pkg}$" "pins/${pkg}.txt" \
        && grep -qE '^branch=ai/main$' "pins/${pkg}.txt" \
        && grep -qE '^commit=[0-9a-f]{40}$' "pins/${pkg}.txt"; then

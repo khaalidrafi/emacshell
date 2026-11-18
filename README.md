@@ -158,30 +158,21 @@ Android 9–11 the widget renders identically but the whole surface is a
 single open-Emacs tap (`RemoteViews.addView` does not exist there).
 The habit check marks flip instantly via a shadow state file; Emacs is
 authoritative again on the next sync (the first-boot `init.el` wires
-`focus-in-hook` + a 15 s poller + a 60 s reminder checker).
+`focus-in-hook` + a 15 s poller).
 
-## Habit tracker — Loop Habit Tracker on Org files
+## Personal configuration
 
-[loophabits](https://github.com/khaalidrafi/loophabits) ships in the
-APK: ALL the features of Loop Habit Tracker (iSoron/uhabits) — yes/no,
-measurable and at-most habits, flexible schedules, the real Loop score
-and streak math, per-weekday stats, a 365-day history grid, reminders,
-CSV/JSON export — on one plain Org file (`~/org/habits.org`). `M-x
-loophabits` opens the dashboard; `n` creates a habit. The
-**org-habits** home-screen widget (above) shows today's list with
-tap-to-check marks straight on the home screen.
+The APK ships **no personal configuration**: only what the APK itself
+provides (the vendored `eservo` and `elwidget` packages, the Termux
+prefix, the terminal escape hatch) is wired into the first-boot
+`init.el` (Owner order 2026-11-18).
 
-## Mail — Gnus over IMAP
-
-The first-boot `init.el` configures Gnus (built into Emacs; nothing to
-install) for one IMAP account plus SMTP. Put your credentials in
-`~/.authinfo` (see the comments in `init.el`; Gmail needs an app
-password), adjust `emacshell-mail-imap-server` /
-`emacshell-mail-smtp-server` if you do not use Gmail, then `M-x gnus`.
-The GNU Emacs Android port bundles GnuTLS, so `nnimap-stream ssl`
-works out of the box. Existing installs: the same block is documented
-in the `init.el` template — copy it from the repository's
-`app/src/termux/assets/emacshell/init.el`.
+Habit tracking ([loophabits](https://github.com/khaalidrafi/loophabits),
+feeding the `org-habits` widget above), mail (**notmuch over IMAP**,
+not Gnus — synced with mbsync) and the rest of the phone setup live in
+the personal Android config repo,
+[emacs-android](https://github.com/khaalidrafi/emacs-android), which
+installs them as ordinary `:vc` packages on top of this APK.
 
 ## Building from source
 

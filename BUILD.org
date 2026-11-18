@@ -48,7 +48,6 @@ Vendored Elisp packages live under
 |---|---|
 | =eservo= | embedded browser automation |
 | =elwidget= | the widget maker (specs drawn by the AppWidget host) |
-| =loophabits= | the habit tracker (Loop Habit Tracker on Org) |
 
 =EmacshellApplication.installVendoredPackages()= copies each to
 =files/.emacs.d/site-lisp/<name>/= on every boot and puts all of them on
