@@ -105,6 +105,39 @@ script fails; =--check= verifies the committed tree is in the patched
 state (wired into =scripts/check.sh=).  Idempotent by construction:
 the copy always restarts from the pristine source.
 
+** 2b. Emacs native patches: =patches/emacs/= (NOT in the release build)
+
+=patches/emacs/= carries a patch series against the Emacs 31.1 source
+tree that adds two Android primitives the stock port lacks:
+
+- =0001-android-usage-stats= :: =(android-usage-stats BEGIN-MS END-MS)=
+  reads Usage Access (UsageStatsManager) per package -- the native
+  screen-time pull org-activity consumes
+  (org-activity-android.el).  The manifest already declares
+  =PACKAGE_USAGE_STATS=; the user still grants "Usage access" in
+  Settings.
+- =0002-android-start-activity= :: =(android-start-activity COMPONENT
+  &optional EXTRAS-ALIST)= launches an activity by component name with
+  string intent extras -- eservo's on-device servo lane.
+
+The release build does NOT apply them: it consumes GNU's prebuilt
+native libraries (step 3), and these primitives live in
+=src/androidfns.c=/=src/android.c=, which are compiled into
+=libemacs.so=.  Shipping them requires the FROM-SOURCE lane: unpack
+=emacs-31.1.tar.xz=, apply the series (=patch -p1 < patches/emacs/*.patch=
+in order), build the Android port per the tarball's =java/INSTALL=
+(NDK r25c, platform 33 -- the same tooling the lineageos-mi439 lane
+uses), then point =GNU_MIRROR=/=pins/gnu-apk.sha256= at that build
+instead of the signed GNU APK.  That lane trades the GPG-verified
+supply chain for the patched primitives; the pin + verification
+decision for it is REVIEW.org "Emacs from-source lane".  Both patches
+were generated from and verified to apply cleanly against the pristine
+=emacs-31.1= tarball tree (in series order).
+
+Consumers degrade gracefully on stock builds: org-activity falls back
+to its StayFree export puller and eservo to its =am start=/adb lanes
+(both already landed, guarded by =fboundp=).
+
 ** 3. GNU APK extraction: =scripts/extract-gnu-apk.sh=
 
 Downloads =emacs-31.1-<api>-<abi>.apk= from a GNU mirror, verifies the

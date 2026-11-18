@@ -1,0 +1,286 @@
+android-usage-stats: read Usage Access natively (org-activity)
+
+Adds the android-usage-stats primitive (BEGIN-MS END-MS) to GNU Emacs
+31.1's Android port, per the NATIVE-USAGE.org design in
+khaalidrafi/org-activity: EmacsService.queryUsageStats (Java) + a
+DEFUN in androidfns.c (C), following the established queryBattery /
+getDocumentTrees service pattern.  Consumed by org-activity's
+org-activity-android.el (already landed, guarded by fboundp).
+
+Applies with: patch -p1 < patches/emacs/0001-android-usage-stats.patch
+
+diff --git a/java/org/gnu/emacs/EmacsService.java b/java/org/gnu/emacs/EmacsService.java
+index 9e85b19..524ca79 100644
+--- a/java/org/gnu/emacs/EmacsService.java
++++ b/java/org/gnu/emacs/EmacsService.java
+@@ -53,6 +53,8 @@
+ import android.app.NotificationManager;
+ import android.app.PendingIntent;
+ import android.app.Service;
++import android.app.usage.UsageStats;
++import android.app.usage.UsageStatsManager;
+ 
+ import android.content.ActivityNotFoundException;
+ import android.content.ClipboardManager;
+@@ -62,6 +64,7 @@
+ import android.content.IntentFilter;
+ import android.content.UriPermission;
+ 
++import android.content.pm.ApplicationInfo;
+ import android.content.pm.PackageManager;
+ 
+ import android.content.res.AssetManager;
+@@ -785,6 +788,82 @@ invocation of app_process (through android-emacs) can
+     return null;
+   }
+ 
++  /* Query per-application usage statistics between two times.
++     Return an array of strings, each of the form
++
++       "PACKAGE\tLABEL\tLAST-USED-MS\tFOREGROUND-MS"
++
++     with LABEL empty when no display label could be determined.
++     Packages with no foreground time are NULL elements; value is
++     NULL if the system returned no statistics or this build of
++     Android lacks a UsageStatsManager.
++
++     The android.permission.PACKAGE_USAGE_STATS permission is
++     declared by the manifest, but the user must separately enable
++     "Usage access" for Emacs from the system settings screen.  */
++
++  @SuppressWarnings ("deprecation")
++  public String[]
++  queryUsageStats (long beginTime, long endTime)
++  {
++    UsageStatsManager manager;
++    PackageManager packageManager;
++    List<UsageStats> stats;
++    String[] rows;
++    int i, size;
++
++    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP)
++      return null;
++
++    manager
++      = (UsageStatsManager) getSystemService (Context.USAGE_STATS_SERVICE);
++
++    if (manager == null)
++      return null;
++
++    stats = manager.queryUsageStats (UsageStatsManager.INTERVAL_BEST,
++				     beginTime, endTime);
++
++    if (stats == null || (size = stats.size ()) == 0)
++      return null;
++
++    packageManager = getPackageManager ();
++    rows = new String[size];
++
++    for (i = 0; i < size; ++i)
++      {
++	UsageStats stat;
++	ApplicationInfo info;
++	CharSequence label;
++
++	stat = stats.get (i);
++
++	if (stat.getTotalTimeInForeground () <= 0)
++	  {
++	    rows[i] = null;
++	    continue;
++	  }
++
++	try
++	  {
++	    info = packageManager.getApplicationInfo (stat.getPackageName (),
++						      0);
++	    label = packageManager.getApplicationLabel (info);
++	  }
++	catch (Exception e)
++	  {
++	    label = null;
++	  }
++
++	rows[i] = (stat.getPackageName () + "\t"
++		   + (label != null ? label.toString () : "") + "\t"
++		   + stat.getLastTimeUsed () + "\t"
++		   + stat.getTotalTimeInForeground ());
++      }
++
++    return rows;
++  }
++
+   /* Get a SDK 11 ClipboardManager.
+ 
+      Android 4.0.x requires that this be called from the main
+diff --git a/src/android.c b/src/android.c
+index c1b2b9c..3354d9b 100644
+--- a/src/android.c
++++ b/src/android.c
+@@ -1777,6 +1777,8 @@ android_init_emacs_service (void)
+   FIND_METHOD (check_content_uri, "checkContentUri",
+ 	       "(Ljava/lang/String;ZZ)Z");
+   FIND_METHOD (query_battery, "queryBattery", "()[J");
++  FIND_METHOD (query_usage_stats, "queryUsageStats", "(JJ)"
++	       "[Ljava/lang/String;");
+   FIND_METHOD (update_extracted_text, "updateExtractedText",
+ 	       "(Lorg/gnu/emacs/EmacsWindow;"
+ 	       "Landroid/view/inputmethod/ExtractedText;I)V");
+diff --git a/src/android.h b/src/android.h
+index 38fe3f2..0185cf4 100644
+--- a/src/android.h
++++ b/src/android.h
+@@ -294,6 +294,7 @@ struct android_emacs_service
+   jmethodID open_content_uri;
+   jmethodID check_content_uri;
+   jmethodID query_battery;
++  jmethodID query_usage_stats;
+   jmethodID update_extracted_text;
+   jmethodID update_cursor_anchor_info;
+   jmethodID get_document_authorities;
+diff --git a/src/androidfns.c b/src/androidfns.c
+index 6d9af38..430cc5e 100644
+--- a/src/androidfns.c
++++ b/src/androidfns.c
+@@ -20,6 +20,7 @@ along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
+ #include <config.h>
+ #include <math.h>
+ #include <stdlib.h>
++#include <string.h>
+ 
+ #include "lisp.h"
+ #include "android.h"
+@@ -3238,8 +3239,124 @@ for more details about these values.  */)
+ 	       make_fixnum (state.temperature));
+ }
+ 
+-
+ 
++/* Usage Access (UsageStatsManager) support.  */
++
++DEFUN ("android-usage-stats", Fandroid_usage_stats,
++       Sandroid_usage_stats, 2, 2, 0,
++       doc: /* Return per-application usage statistics between two times.
++BEGIN-MS and END-MS are epoch milliseconds delimiting the query
++window, as accepted by UsageStatsManager.queryUsageStats with
++INTERVAL_BEST.  Value is a list of entries, each of the form:
++
++  (PACKAGE LABEL LAST-USED-MS FOREGROUND-MS)
++
++where PACKAGE is the package name, LABEL its display label or nil,
++LAST-USED-MS the last time the package was used and FOREGROUND-MS
++the total time it spent in the foreground, both in epoch
++milliseconds.  Packages with no foreground time are omitted.
++
++Value is nil if this Emacs lacks a display connection, if the system
++returned no statistics for that window, or if "Usage access" has
++not been granted to this application; enable it under Settings,
++"Special app access", "Usage access".  The
++android.permission.PACKAGE_USAGE_STATS permission this facility
++requires is already declared by the Android manifest.
++
++usage: (android-usage-stats BEGIN-MS END-MS) */)
++  (Lisp_Object begin, Lisp_Object end)
++{
++  jobjectArray array;
++  jmethodID method;
++  jsize length, i;
++  intmax_t begin_ms, end_ms;
++  Lisp_Object rows;
++
++  /* Make sure the Android libraries have been initialized.  */
++
++  if (!android_init_gui)
++    return Qnil;
++
++  CHECK_INTEGER (begin);
++  CHECK_INTEGER (end);
++
++  if (!integer_to_intmax (begin, &begin_ms)
++      || !integer_to_intmax (end, &end_ms))
++    error ("BEGIN or END is not representable");
++
++  /* Query the system.  */
++
++  method = service_class.query_usage_stats;
++  array
++    = (*android_java_env)->CallNonvirtualObjectMethod (android_java_env,
++						       emacs_service,
++						       service_class.class,
++						       method,
++						       (jlong) begin_ms,
++						       (jlong) end_ms);
++  android_exception_check ();
++
++  if (!array)
++    return Qnil;
++
++  length = (*android_java_env)->GetArrayLength (android_java_env, array);
++  rows = Qnil;
++
++  for (i = 0; i < length; ++i)
++    {
++      jobject element;
++      const char *utf;
++      const char *tab1, *tab2, *tab3;
++      Lisp_Object package, label, last_used, foreground;
++
++      element = (*android_java_env)->GetObjectArrayElement (android_java_env,
++							    array, i);
++
++      if (!element)
++	continue;
++
++      utf = (*android_java_env)->GetStringUTFChars (android_java_env,
++						    element, NULL);
++
++      if (!utf)
++	{
++	  ANDROID_DELETE_LOCAL_REF (element);
++	  continue;
++	}
++
++      /* Each element is "PACKAGE\tLABEL\tLAST-USED-MS\tFOREGROUND-MS",
++	 with LABEL empty when no display label exists.  */
++
++      tab1 = strchr (utf, '\t');
++      tab2 = tab1 ? strchr (tab1 + 1, '\t') : NULL;
++      tab3 = tab2 ? strchr (tab2 + 1, '\t') : NULL;
++
++      if (tab1 && tab2 && tab3)
++	{
++	  package = build_string (utf, tab1 - utf);
++	  label = (tab2 > tab1 + 1
++		   ? build_string (tab1 + 1, tab2 - tab1 - 1)
++		   : Qnil);
++	  last_used = Fstring_to_number (build_string (tab2 + 1,
++						       tab3 - tab2 - 1),
++					 Qnil);
++	  foreground = Fstring_to_number (build_string (tab3 + 1,
++							strlen (tab3 + 1)),
++					 Qnil);
++	  rows = Fcons (list4 (package, label, last_used, foreground),
++			rows);
++	}
++
++      (*android_java_env)->ReleaseStringUTFChars (android_java_env,
++						  element, utf);
++      ANDROID_DELETE_LOCAL_REF (element);
++    }
++
++  ANDROID_DELETE_LOCAL_REF (array);
++  return Fnreverse (rows);
++}
++
++
+ /* SAF directory access management.  */
+ 
+ DEFUN ("android-request-directory-access", Fandroid_request_directory_access,
+@@ -3772,6 +3889,7 @@ language to be US English if LANGUAGE is empty.  */);
+   defsubr (&Sx_server_version);
+ #ifndef ANDROID_STUBIFY
+   defsubr (&Sandroid_query_battery);
++  defsubr (&Sandroid_usage_stats);
+   defsubr (&Sandroid_request_directory_access);
+   defsubr (&Sandroid_external_storage_available_p);
+   defsubr (&Sandroid_request_storage_access);
