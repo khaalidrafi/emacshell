@@ -14,4 +14,4 @@
 
 repo=https://github.com/khaalidrafi/elwidget
 branch=ai/main
-commit=60e9282f0fe4e8c885d0971695ef593b1849720f
+commit=291132ac828dcad4d536ac9eec5181aa8ca02277
