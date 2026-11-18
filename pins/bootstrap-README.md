@@ -23,10 +23,17 @@ zip contents do.
 ## The fix
 
 Build our own bootstrap with the termux-packages Docker builder, with
-`TERMUX_APP_PACKAGE` set to the emacshell applicationId.  This is the
-approach the termux-packages maintainers document for exactly this use
-case (termux/termux-packages#24396).  `scripts/build-bootstrap.sh`
-automates it; `.github/workflows/bootstrap.yml` runs it in CI.
+the emacshell applicationId exported as `TERMUX_APP__PACKAGE_NAME`
+(upstream's current variable name; the deprecated `TERMUX_APP_PACKAGE`
+alias is exported too).  This is the approach the termux-packages
+maintainers document for exactly this use case (termux/termux-packages#24396),
+plus two post-clone patches to the pinned tree that
+`scripts/build-bootstrap.sh` applies fail-loud on every run (upstream
+removed packages/bzip2 while its bootstrap builder still lists it, and
+its properties.sh hard-assigns the app package name so the prefix env
+must be made overridable; see REVIEW.org "Bootstrap upstream patches").
+`scripts/build-bootstrap.sh` automates it; `.github/workflows/bootstrap.yml`
+runs it in CI.
 
 The distro flavor's bootstrap adds `proot` and `proot-distro`
 (`--add proot --add proot-distro`) so `M-x emacshell-distro-login`
