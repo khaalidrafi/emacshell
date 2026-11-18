@@ -116,18 +116,28 @@ jobs:
         run: |
           set -euxo pipefail
           mkdir -p build/downloads
-          # --retry-all-errors: run 44332795379 lost 3/4 jobs to a
-          # ~3-minute mirrors.kernel.org outage; plain --retry does not
-          # retry "connection reset" (curl exit 35), so a blip on the
-          # mirror fails the whole job.  Same URLs, same GPG check --
-          # only the retry policy widens.
+          # --retry-all-errors + mirror fallback: mirrors.kernel.org had
+          # two partial outages today (runs 44332795379, 44366048965),
+          # reachable only from SOME runner IPs.  ftp.gnu.org is the
+          # canonical source.  The GPG check below authenticates the
+          # apk end-to-end, so trying several GNU mirrors is exactly as
+          # safe as trying one: a bad apk or sig fails verification
+          # regardless of which mirror served it.
           curl() { command curl -fSL --retry 3 --retry-all-errors \
             --retry-delay 5 --connect-timeout 30 "$@"; }
+          fetch() { # fetch <output-file> <relative-path-under-/gnu/emacs/android>
+            for mirror in "${GNU_MIRROR}" \
+                          https://ftp.gnu.org/gnu/emacs/android \
+                          https://mirror.csclub.uwaterloo.ca/gnu/emacs/android; do
+              if curl -o "$1" "${mirror}/$2"; then return 0; fi
+              echo "::warning::mirror ${mirror} failed for $2; trying the next GNU mirror"
+            done
+            echo "::error::all GNU mirrors failed for $2"
+            return 1
+          }
           apk="build/downloads/emacs-31.1-${GNU_API}-arm64-v8a.apk"
-          curl -o "${apk}" \
-            "${GNU_MIRROR}/emacs-31.1-${GNU_API}-arm64-v8a.apk"
-          curl -o "${apk}.sig" \
-            "${GNU_MIRROR}/emacs-31.1-${GNU_API}-arm64-v8a.apk.sig"
+          fetch "${apk}" "emacs-31.1-${GNU_API}-arm64-v8a.apk"
+          fetch "${apk}.sig" "emacs-31.1-${GNU_API}-arm64-v8a.apk.sig"
           # Prefer the committed copy of the release key; fall back to
           # fetching it from ftp.gnu.org.  If BOTH fail the step fails:
           # an unverified Emacs binary must never enter an APK.
