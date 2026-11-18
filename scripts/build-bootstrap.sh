@@ -18,8 +18,11 @@
 #
 # WHAT it does:
 #
-#   1. Clones termux-packages at the commit pinned in
-#      pins/termux-packages.txt into build/termux-packages.
+#   1. Verifies that the release tag pinned in pins/termux-packages.txt
+#      still resolves to the pinned commit (termux-packages release
+#      discipline, Owner order 2026-11-18: bootstrap-YYYY.MM.DD-rN tags
+#      only, never raw master), then clones it into
+#      build/termux-packages.
 #   2. Patches the pinned tree for two upstream drifts (see the patch
 #      step below), then runs the upstream docker builder
 #      (scripts/run-docker.sh -> scripts/build-bootstraps.sh) with the
@@ -87,18 +90,39 @@ esac
 # --- locate the pinned termux-packages checkout -------------------------------
 pin_file="pins/termux-packages.txt"
 tp_repo="$(sed -n 's/^repo=//p' "${pin_file}")"
+tp_tag="$(sed -n 's/^tag=//p' "${pin_file}")"
 tp_commit="$(sed -n 's/^commit=//p' "${pin_file}")"
-if [ -z "${tp_repo}" ] || [ -z "${tp_commit}" ]; then
-    echo "error: ${pin_file} is malformed (need repo= and commit=)" >&2
+if [ -z "${tp_repo}" ] || [ -z "${tp_tag}" ] || [ -z "${tp_commit}" ]; then
+    echo "error: ${pin_file} is malformed (need repo=, tag= and commit=)" >&2
     exit 1
 fi
+
+# --- release-tag discipline (Owner order 2026-11-18) ---------------------------
+# termux-packages tags every tree that produced an official bootstrap
+# (bootstrap-YYYY.MM.DD-rN+apt.android-N); those tags are the only
+# blessed inputs for bootstrap production -- master moves hourly and
+# its middle states are nobody's release.  Fail BEFORE the two-hour
+# docker build if the tag does not resolve to the pinned commit
+# (annotated tags resolve through the peeled ^{} ref; the bootstrap
+# tags are lightweight, where the ref itself is the commit).
+tag_commit="$(git ls-remote "${tp_repo}" "refs/tags/${tp_tag}^{}" | awk '{print $1}')"
+if [ -z "${tag_commit}" ]; then
+    tag_commit="$(git ls-remote "${tp_repo}" "refs/tags/${tp_tag}" | awk '{print $1}')"
+fi
+if [ "${tag_commit}" != "${tp_commit}" ]; then
+    echo "error: ${pin_file}: tag ${tp_tag} resolves to ${tag_commit:-nothing}, but commit= is ${tp_commit}" >&2
+    echo "       move tag= and commit= together, to a termux-packages RELEASE tag" >&2
+    exit 1
+fi
+
+echo "Pinned termux-packages release: ${tp_tag} (${tp_commit:0:12})"
 
 if [ -z "${src}" ]; then
     cached="build/termux-packages"
     if [ -d "${cached}/.git" ] && [ "$(git -C "${cached}" rev-parse HEAD)" = "${tp_commit}" ]; then
         src="${cached}"
     else
-        echo "Cloning ${tp_repo} at ${tp_commit} into ${cached}"
+        echo "Cloning ${tp_repo} at ${tp_tag} (${tp_commit}) into ${cached}"
         rm -rf "${cached}"
         mkdir -p "$(dirname "${cached}")"
         git clone --quiet "${tp_repo}" "${cached}"

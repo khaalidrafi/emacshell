@@ -1,6 +1,10 @@
 # Bootstrap workflow: build the CUSTOM-PREFIX Termux bootstraps for
 # both emacshell applicationIds using the official termux-packages
-# Docker builder (TERMUX_APP_PACKAGE=<applicationId>).
+# Docker builder (TERMUX_APP__PACKAGE_NAME=<applicationId>, the
+# deprecated TERMUX_APP_PACKAGE alias exported too), from the
+# termux-packages RELEASE TAG pinned in pins/termux-packages.txt
+# (bootstrap-YYYY.MM.DD-rN+apt.android-N; verified against
+# git ls-remote by scripts/build-bootstrap.sh).
 #
 # This is manual-dispatch only: it takes 1-2 hours per flavor, and its
 # output is not wired into the APK build automatically on purpose.

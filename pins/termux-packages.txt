@@ -1,13 +1,23 @@
 # termux-packages source pin.
 #
 # Used ONLY by scripts/build-bootstrap.sh, which clones this commit of
-# termux-packages and runs its Docker builder with
-# TERMUX_APP_PACKAGE set to an emacshell applicationId (see
+# termux-packages and runs its Docker builder with the emacshell
+# applicationId exported as TERMUX_APP__PACKAGE_NAME (see
 # pins/bootstrap-README.md and BUILD.org for the full rationale:
 # the official bootstrap is com.termux-prefixed and unusable here).
 #
-# master as of 2026-11-15; bump deliberately and re-verify the produced
-# bootstrap, since this pin defines the entire bootstrap contents.
+# RELEASE TAGS ONLY (Owner order 2026-11-18: "You should use a release
+# version").  termux-packages tags every tree that produced an
+# official Termux bootstrap (bootstrap-YYYY.MM.DD-rN+apt.android-N);
+# master itself moves hourly and is unblessed for bootstrap
+# production.  scripts/build-bootstrap.sh verifies with git ls-remote
+# that the tag still resolves to commit= below, and scripts/check.sh
+# enforces the tag= field's shape.  Bump deliberately: move tag= AND
+# commit= together, re-derive the two post-clone patches (REVIEW.org
+# "Bootstrap upstream patches"), and re-verify the produced bootstrap
+# before filling any pin -- this pin defines the entire bootstrap
+# contents.
 
 repo=https://github.com/termux/termux-packages
-commit=3e0bfec4f6bcdc7cf1201d14f24c5a9c8c597209
+tag=bootstrap-2026.11.15-r1+apt.android-7
+commit=8eb3169dbd10d71ef26e2847191f9ae2a452ab2e
