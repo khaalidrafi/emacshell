@@ -1,0 +1,221 @@
+android-start-activity: launch a component with intent extras (eservo)
+
+Adds the android-start-activity primitive (COMPONENT &optional
+EXTRAS-ALIST): EmacsService.startActivityByName (Java) + a DEFUN in
+androidfns.c (C).  eservo's on-device lane launches the servo app
+with devtools enabled, no adb.  Consumed by eservo-servo.el
+(already landed, guarded by fboundp).
+
+Applies with: patch -p1 < patches/emacs/0002-android-start-activity.patch
+
+diff --git a/java/org/gnu/emacs/EmacsService.java b/java/org/gnu/emacs/EmacsService.java
+index 524ca79..acd0c43 100644
+--- a/java/org/gnu/emacs/EmacsService.java
++++ b/java/org/gnu/emacs/EmacsService.java
+@@ -58,6 +58,7 @@
+ 
+ import android.content.ActivityNotFoundException;
+ import android.content.ClipboardManager;
++import android.content.ComponentName;
+ import android.content.Context;
+ import android.content.ContentResolver;
+ import android.content.Intent;
+@@ -864,6 +865,46 @@ invocation of app_process (through android-emacs) can
+     return rows;
+   }
+ 
++  /* Start the activity designated by COMPONENT, a string of the
++     form "PACKAGE/ACTIVITY", with KEYS and VALUES supplied as
++     string intent extras.
++
++     Value is true upon success, false upon failure.  */
++
++  public boolean
++  startActivityByName (String component, String[] keys, String[] values)
++  {
++    ComponentName name;
++    Intent intent;
++    int index, i;
++
++    try
++      {
++	index = component.indexOf ('/');
++
++	if (index <= 0 || index == component.length () - 1)
++	  return false;
++
++	name = new ComponentName (component.substring (0, index),
++				  component.substring (index + 1));
++	intent = new Intent ();
++	intent.setComponent (name);
++	intent.addFlags (Intent.FLAG_ACTIVITY_NEW_TASK);
++
++	if (keys != null)
++	  for (i = 0; i < keys.length; ++i)
++	    intent.putExtra (keys[i], values[i]);
++
++	startActivity (intent);
++      }
++    catch (Exception e)
++      {
++	return false;
++      }
++
++    return true;
++  }
++
+   /* Get a SDK 11 ClipboardManager.
+ 
+      Android 4.0.x requires that this be called from the main
+diff --git a/src/android.c b/src/android.c
+index 3354d9b..f0e80b2 100644
+--- a/src/android.c
++++ b/src/android.c
+@@ -1767,6 +1767,9 @@ android_init_emacs_service (void)
+   FIND_METHOD (name_keysym, "nameKeysym", "(I)Ljava/lang/String;");
+   FIND_METHOD (browse_url, "browseUrl", "(Ljava/lang/String;Z)"
+ 	       "Ljava/lang/String;");
++  FIND_METHOD (start_activity, "startActivityByName",
++	       "(Ljava/lang/String;[Ljava/lang/String;"
++	       "[Ljava/lang/String;)Z");
+   FIND_METHOD (restart_emacs, "restartEmacs", "()V");
+   FIND_METHOD (update_ic, "updateIC",
+ 	       "(Lorg/gnu/emacs/EmacsWindow;IIII)V");
+diff --git a/src/android.h b/src/android.h
+index 0185cf4..cff12a3 100644
+--- a/src/android.h
++++ b/src/android.h
+@@ -288,6 +288,7 @@ struct android_emacs_service
+   jmethodID detect_keyboard;
+   jmethodID name_keysym;
+   jmethodID browse_url;
++  jmethodID start_activity;
+   jmethodID restart_emacs;
+   jmethodID update_ic;
+   jmethodID reset_ic;
+diff --git a/src/androidfns.c b/src/androidfns.c
+index 430cc5e..6ed040f 100644
+--- a/src/androidfns.c
++++ b/src/androidfns.c
+@@ -3356,6 +3356,113 @@ usage: (android-usage-stats BEGIN-MS END-MS) */)
+   return Fnreverse (rows);
+ }
+ 
++DEFUN ("android-start-activity", Fandroid_start_activity,
++       Sandroid_start_activity, 1, 2, 0,
++       doc: /* Start an Android activity by component name.
++COMPONENT is a string of the form "PACKAGE/ACTIVITY", for example
++"org.gnu.emacs/.EmacsActivity".  EXTRAS, if non-nil, is an
++association list of string keys and string values, each pair
++delivered to the activity as a string intent extra.
++
++Value is t if the activity was started, nil if it could not be
++(such as when the component does not exist or the system refused
++to start it).  Exported activities need no special permission;
++activities that are not exported can only be started by their own
++application.  As with `browse-url', activities are started from
++the Emacs service context with FLAG_ACTIVITY_NEW_TASK set, which
++Android permits while this application is in the foreground.  */)
++  (Lisp_Object component, Lisp_Object extras)
++{
++  jstring component1;
++  jobjectArray keys, values;
++  jmethodID method;
++  jboolean started;
++  ptrdiff_t i, nitems;
++  Lisp_Object tem;
++
++  /* Make sure the Android libraries have been initialized.  */
++
++  if (!android_init_gui)
++    return Qnil;
++
++  CHECK_STRING (component);
++
++  /* Count EXTRAS and verify its shape.  */
++
++  nitems = 0;
++
++  if (!NILP (extras))
++    {
++      tem = extras;
++      FOR_EACH_TAIL (tem)
++	{
++	  CHECK_CONS (XCAR (tem));
++	  CHECK_STRING (XCAR (XCAR (tem)));
++	  CHECK_STRING (XCDR (XCAR (tem)));
++	  nitems++;
++	}
++    }
++
++  /* Encode the component name and the extras.  */
++
++  component1 = android_build_string (component, NULL);
++
++  if (nitems)
++    {
++      keys = (*android_java_env)->NewObjectArray (android_java_env,
++						  nitems,
++						  java_string_class,
++						  NULL);
++      android_exception_check_1 (component1);
++      values = (*android_java_env)->NewObjectArray (android_java_env,
++						    nitems,
++						    java_string_class,
++						    NULL);
++      android_exception_check_2 (component1, keys);
++
++      for (i = 0; i < nitems; ++i)
++	{
++	  Lisp_Object pair, key1, value1;
++
++	  pair = XCAR (extras);
++	  extras = XCDR (extras);
++
++	  key1 = android_build_string (XCAR (pair), component1, keys,
++				       values, NULL);
++	  (*android_java_env)->SetObjectArrayElement (android_java_env,
++						      keys, i, key1);
++	  ANDROID_DELETE_LOCAL_REF (key1);
++
++	  value1 = android_build_string (XCDR (pair), component1, keys,
++					 values, NULL);
++	  (*android_java_env)->SetObjectArrayElement (android_java_env,
++						      values, i, value1);
++	  ANDROID_DELETE_LOCAL_REF (value1);
++	}
++    }
++  else
++    {
++      keys = NULL;
++      values = NULL;
++    }
++
++  /* Start the activity.  */
++
++  method = service_class.start_activity;
++  started = (*android_java_env)->CallNonvirtualBooleanMethod (android_java_env,
++							      emacs_service,
++							      service_class.class,
++							      method,
++							      component1,
++							      keys, values);
++  android_exception_check_3 (component1, keys, values);
++  ANDROID_DELETE_LOCAL_REF (component1);
++  ANDROID_DELETE_LOCAL_REF (keys);
++  ANDROID_DELETE_LOCAL_REF (values);
++
++  return started ? Qt : Qnil;
++}
++
+ 
+ /* SAF directory access management.  */
+ 
+@@ -3890,6 +3997,7 @@ language to be US English if LANGUAGE is empty.  */);
+ #ifndef ANDROID_STUBIFY
+   defsubr (&Sandroid_query_battery);
+   defsubr (&Sandroid_usage_stats);
++  defsubr (&Sandroid_start_activity);
+   defsubr (&Sandroid_request_directory_access);
+   defsubr (&Sandroid_external_storage_available_p);
+   defsubr (&Sandroid_request_storage_access);
