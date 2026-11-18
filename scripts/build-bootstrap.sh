@@ -10,17 +10,21 @@
 #   bootstrap zip would unpack a prefix full of binaries that all point
 #   at (and exec from) another app's data directory -- which Android
 #   forbids and SELinux enforces.  The fix is to rebuild the bootstrap
-#   from termux-packages with TERMUX_APP_PACKAGE set to our
-#   applicationId; this is the approach sanctioned by the
-#   termux-packages maintainers in issue #24396.
+#   from termux-packages with the applicationId exported as
+#   TERMUX_APP__PACKAGE_NAME (upstream's current variable name; the
+#   old TERMUX_APP_PACKAGE is exported too -- see the patch step
+#   below); this is the approach sanctioned by the termux-packages
+#   maintainers in issue #24396.
 #
 # WHAT it does:
 #
 #   1. Clones termux-packages at the commit pinned in
 #      pins/termux-packages.txt into build/termux-packages.
-#   2. Runs the upstream docker builder (scripts/run-docker.sh ->
-#      scripts/build-bootstraps.sh) with TERMUX_APP_PACKAGE exported to
-#      the flavor's applicationId (read from gradle.properties).
+#   2. Patches the pinned tree for two upstream drifts (see the patch
+#      step below), then runs the upstream docker builder
+#      (scripts/run-docker.sh -> scripts/build-bootstraps.sh) with the
+#      flavor's applicationId (read from gradle.properties) exported
+#      into the container.
 #      The distro flavor additionally adds proot and proot-distro to
 #      the bootstrap so `M-x emacshell-distro-login' works offline.
 #   3. Moves the resulting bootstrap-aarch64.zip to
@@ -107,7 +111,44 @@ if [ "${actual}" != "${tp_commit}" ]; then
     echo "error: ${src} is at ${actual}, pin expects ${tp_commit}" >&2
     exit 1
 fi
-echo "Building the '${flavor}' bootstrap (TERMUX_APP_PACKAGE=${app_id}) from ${src}"
+echo "Building the '${flavor}' bootstrap (TERMUX_APP__PACKAGE_NAME=${app_id}) from ${src}"
+
+# --- patch the pinned tree for emacshell (idempotent, fail-loud) ---------------
+# Two deliberate deviations from the pinned tree, re-applied on every
+# clone.  A future pin bump that changes these lines FAILS here,
+# forcing a deliberate re-review instead of silently shipping (see
+# REVIEW.org 'Bootstrap upstream patches').
+#
+#   1. scripts/properties.sh hard-assigns TERMUX_APP__PACKAGE_NAME=
+#      "com.termux", and EVERY prefix variable derives from it
+#      (TERMUX_APP__DATA_DIR, TERMUX__ROOTFS, TERMUX__PREFIX, and the
+#      deprecated TERMUX_APP_PACKAGE alias is only a shadow of it).
+#      Since the upstream variable rename, exporting the old
+#      TERMUX_APP_PACKAGE name is silently discarded -- run
+#      44305581362 built every package under
+#      /data/data/com.termux/files/usr despite our env.  Make the
+#      default env-overridable so the flavor's applicationId lands.
+#
+#   2. scripts/build-bootstraps.sh still lists "bzip2", but upstream
+#      removed packages/bzip2 -- the libbz2 package now ships the
+#      bzip2/bunzip2/bzcat binaries itself (and is
+#      TERMUX_PKG_ESSENTIAL).  Upstream's own bootstrap builder
+#      breaks with "ERROR: No package bzip2 found" until this is
+#      fixed there; swap the entry to libbz2 (functionally identical).
+properties_file="${src}/scripts/properties.sh"
+bootstraps_file="${src}/scripts/build-bootstraps.sh"
+if grep -qE '^TERMUX_APP__PACKAGE_NAME=' "${properties_file}"; then
+    sed -i 's|^TERMUX_APP__PACKAGE_NAME="com.termux"$|# emacshell patch: env-overridable default (upstream hard-assigns; see REVIEW.org Bootstrap upstream patches)\n: "${TERMUX_APP__PACKAGE_NAME:=com.termux}"|' "${properties_file}"
+fi
+if grep -qE '^TERMUX_APP__PACKAGE_NAME=' "${properties_file}"; then
+    echo "error: ${properties_file} still hard-assigns TERMUX_APP__PACKAGE_NAME; the pinned tree changed -- re-derive the emacshell patches (REVIEW.org 'Bootstrap upstream patches')" >&2
+    exit 1
+fi
+sed -i 's|^\(\s*\)PACKAGES+=("bzip2")$|\1PACKAGES+=("libbz2")|' "${bootstraps_file}"
+if grep -q '"bzip2"' "${bootstraps_file}"; then
+    echo "error: ${bootstraps_file} still references the removed 'bzip2' package; the pinned tree changed -- re-derive the emacshell patches (REVIEW.org 'Bootstrap upstream patches')" >&2
+    exit 1
+fi
 
 # --- run the upstream docker builder ------------------------------------------
 # TERMUX_DOCKER_EXEC_EXTRA_ARGS is how run-docker.sh forwards environment
@@ -122,7 +163,13 @@ fi
 
 (
     cd "${src}"
-    TERMUX_DOCKER_EXEC_EXTRA_ARGS="--env TERMUX_APP_PACKAGE=${app_id}" \
+    # The MODERN variable name is what properties.sh actually consumes
+    # (the old name is a derived alias at the pinned tree); export both
+    # so the invocation keeps working across pin bumps in either
+    # direction.  Note the patch step above is still REQUIRED: even the
+    # modern name is clobbered by the upstream hard assignment without
+    # it.
+    TERMUX_DOCKER_EXEC_EXTRA_ARGS="--env TERMUX_APP__PACKAGE_NAME=${app_id} --env TERMUX_APP_PACKAGE=${app_id}" \
         ./scripts/run-docker.sh "${build_args[@]}"
 )
 
