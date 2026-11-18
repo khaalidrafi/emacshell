@@ -116,18 +116,24 @@ jobs:
         run: |
           set -euxo pipefail
           mkdir -p build/downloads
+          # --retry-all-errors: run 44332795379 lost 3/4 jobs to a
+          # ~3-minute mirrors.kernel.org outage; plain --retry does not
+          # retry "connection reset" (curl exit 35), so a blip on the
+          # mirror fails the whole job.  Same URLs, same GPG check --
+          # only the retry policy widens.
+          curl() { command curl -fSL --retry 3 --retry-all-errors \
+            --retry-delay 5 --connect-timeout 30 "$@"; }
           apk="build/downloads/emacs-31.1-${GNU_API}-arm64-v8a.apk"
-          curl -fSL --retry 3 -o "${apk}" \
+          curl -o "${apk}" \
             "${GNU_MIRROR}/emacs-31.1-${GNU_API}-arm64-v8a.apk"
-          curl -fSL --retry 3 -o "${apk}.sig" \
+          curl -o "${apk}.sig" \
             "${GNU_MIRROR}/emacs-31.1-${GNU_API}-arm64-v8a.apk.sig"
           # Prefer the committed copy of the release key; fall back to
           # fetching it from ftp.gnu.org.  If BOTH fail the step fails:
           # an unverified Emacs binary must never enter an APK.
           if ! gpg --import keys/emacs-release-key.asc; then
             echo "::warning::committed key failed to import; fetching from ftp.gnu.org"
-            curl -fSL --retry 3 \
-              https://ftp.gnu.org/gnu/emacs/emacs-release-key.asc | gpg --import
+            curl https://ftp.gnu.org/gnu/emacs/emacs-release-key.asc | gpg --import
           fi
           gpg --verify "${apk}.sig" "${apk}"
 
