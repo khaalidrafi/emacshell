@@ -17,13 +17,21 @@ import java.util.Map;
 /**
  * The AppWidget host for Emacs-defined widgets (the elwidget package).
  *
- * Three provider declarations (4x1, 4x2, 4x3) share this class; each
- * bound Android widget renders the spec Emacs wrote for it and sends
- * taps back down the file contract (events.jsonl) where Emacs drains
- * them.  "open" taps foreground Emacs first, as the elwidget README
- * documents.
+ * Three provider declarations (4x1, 4x2, 4x3) share this behaviour
+ * through the thin ElwidgetProvider4x{1,2,3} subclasses -- the manifest
+ * merger rejects one receiver class declared three times.  Each bound
+ * Android widget renders the spec Emacs wrote for it and sends taps
+ * back down the file contract (events.jsonl) where Emacs drains them.
+ * "open" taps foreground Emacs first, as the elwidget README documents.
  */
 public class ElwidgetProvider extends AppWidgetProvider {
+
+    /** The declared receiver classes, smallest first. */
+    static final Class<?>[] PROVIDER_CLASSES = {
+            ElwidgetProvider4x1.class,
+            ElwidgetProvider4x2.class,
+            ElwidgetProvider4x3.class,
+    };
 
     public static final String ACTION_TAP =
             "tech.khalidrafi.emacshell.elwidget.ACTION_TAP";
@@ -106,9 +114,14 @@ public class ElwidgetProvider extends AppWidgetProvider {
             return;
         Map<String, JSONObject> specs = files.readSpecs();
         Map<String, Object> state = files.readState();
-        int[] ids = manager.getAppWidgetIds(
-                new ComponentName(context, ElwidgetProvider.class));
-        for (int id : ids) {
+        // Collect widget ids across ALL declared size subclasses; the
+        // base class itself is not a manifest component.
+        java.util.List<Integer> bound = new java.util.ArrayList<>();
+        for (Class<?> provider : PROVIDER_CLASSES)
+            for (int id : manager.getAppWidgetIds(
+                    new ComponentName(context, provider)))
+                bound.add(id);
+        for (int id : bound) {
             String name = bindings.get(id);
             if (name == null)
                 continue;
