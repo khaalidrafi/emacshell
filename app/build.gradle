@@ -258,6 +258,48 @@ def installBootstrapZip = { String flavorName ->
             "(sha256 ${actual.substring(0, 12)}...)")
 }
 
+// --------------------------------------------------------------------------
+// Distro flavor: bundled Alpine rootfs.
+//
+// The distro APK carries the pinned Alpine minirootfs as an asset at
+// emacshell/alpine-rootfs.tar.gz (staged on first boot by
+// EmacshellApplication/DistroRootfsStager).  The tarball is fetched and
+// verified by scripts/prepare-distro-rootfs.sh into distro-assets/
+// (gitignored); this task re-verifies the pin and installs it into the
+// flavor asset directory before the asset merge task runs.
+// --------------------------------------------------------------------------
+def installAlpineRootfs = {
+    def pinFile = rootProject.file("pins/alpine-rootfs-aarch64.sha256")
+    if (!pinFile.exists())
+        throw new GradleException("Missing ${pinFile}. See scripts/prepare-distro-rootfs.sh.")
+    def url = pinFile.readLines().find { it.startsWith('url=') }?.substring(4)?.trim()
+    def pin = pinFile.readLines().find { it.startsWith('sha256=') }?.substring(7)?.trim()
+    if (!url || !pin)
+        throw new GradleException("${pinFile} is malformed (need url= and sha256=).")
+    def tarball = rootProject.file("distro-assets/${url.tokenize('/').last()}")
+    if (!tarball.exists())
+        throw new GradleException(
+            "Alpine rootfs not found at ${tarball}.\n" +
+            "Run scripts/prepare-distro-rootfs.sh (or check out the CI artifact) " +
+            "before building the distro flavor.")
+    def digest = java.security.MessageDigest.getInstance('SHA-256')
+    tarball.withInputStream { is -> def buf = new byte[8192]
+        int n; while ((n = is.read(buf)) > 0) { digest.update(buf, 0, n) } }
+    def actual = digest.digest().collect { String.format('%02x', it) }.join()
+    if (actual != pin)
+        throw new GradleException("sha256 mismatch for ${tarball}\n" +
+                                  "  expected: ${pin}\n  actual:   ${actual}")
+    def target = project.file('src/distro/assets/emacshell/alpine-rootfs.tar.gz')
+    target.parentFile.mkdirs()
+    copy {
+        from tarball
+        into target.parentFile
+        rename { 'alpine-rootfs.tar.gz' }
+    }
+    println("Installed pinned Alpine rootfs for the distro flavor " +
+            "(sha256 ${actual.substring(0, 12)}...)")
+}
+
 // One shared installBootstrap task, parameterized at EXECUTION time by
 // the flavor(s) this invocation requested.  Rationale: AGP 8 wires the
 // shared (flavorless-named) native tasks -- configureNdkBuildRelease /
@@ -318,48 +360,6 @@ android.applicationVariants.all { variant ->
     if (!variant.flavorName) return
     variant.preBuildProvider.get().dependsOn installBootstrapTask,
                                                   installDistroRootfsTask
-}
-
-// --------------------------------------------------------------------------
-// Distro flavor: bundled Alpine rootfs.
-//
-// The distro APK carries the pinned Alpine minirootfs as an asset at
-// emacshell/alpine-rootfs.tar.gz (staged on first boot by
-// EmacshellApplication/DistroRootfsStager).  The tarball is fetched and
-// verified by scripts/prepare-distro-rootfs.sh into distro-assets/
-// (gitignored); this task re-verifies the pin and installs it into the
-// flavor asset directory before the asset merge task runs.
-// --------------------------------------------------------------------------
-def installAlpineRootfs = {
-    def pinFile = rootProject.file("pins/alpine-rootfs-aarch64.sha256")
-    if (!pinFile.exists())
-        throw new GradleException("Missing ${pinFile}. See scripts/prepare-distro-rootfs.sh.")
-    def url = pinFile.readLines().find { it.startsWith('url=') }?.substring(4)?.trim()
-    def pin = pinFile.readLines().find { it.startsWith('sha256=') }?.substring(7)?.trim()
-    if (!url || !pin)
-        throw new GradleException("${pinFile} is malformed (need url= and sha256=).")
-    def tarball = rootProject.file("distro-assets/${url.tokenize('/').last()}")
-    if (!tarball.exists())
-        throw new GradleException(
-            "Alpine rootfs not found at ${tarball}.\n" +
-            "Run scripts/prepare-distro-rootfs.sh (or check out the CI artifact) " +
-            "before building the distro flavor.")
-    def digest = java.security.MessageDigest.getInstance('SHA-256')
-    tarball.withInputStream { is -> def buf = new byte[8192]
-        int n; while ((n = is.read(buf)) > 0) { digest.update(buf, 0, n) } }
-    def actual = digest.digest().collect { String.format('%02x', it) }.join()
-    if (actual != pin)
-        throw new GradleException("sha256 mismatch for ${tarball}\n" +
-                                  "  expected: ${pin}\n  actual:   ${actual}")
-    def target = project.file('src/distro/assets/emacshell/alpine-rootfs.tar.gz')
-    target.parentFile.mkdirs()
-    copy {
-        from tarball
-        into target.parentFile
-        rename { 'alpine-rootfs.tar.gz' }
-    }
-    println("Installed pinned Alpine rootfs for the distro flavor " +
-            "(sha256 ${actual.substring(0, 12)}...)")
 }
 
 // Same per-VARIANT (not per-flavor) registration trap as above:
