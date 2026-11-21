@@ -91,11 +91,27 @@ def main():
                          '<output-file>')
     jni_dir, out_path = sys.argv[1], sys.argv[2]
     libs = {}
+    skipped = []
     for fn in sorted(os.listdir(jni_dir)):
-        if fn.endswith('.so'):
-            libs[fn] = set(read_needed(os.path.join(jni_dir, fn)))
+        path = os.path.join(jni_dir, fn)
+        if fn.endswith('.so') and os.path.isfile(path) \
+                and not os.path.islink(path):
+            # The APK lib dir also carries executables/scripts disguised
+            # as lib*.so (Android only extracts lib/*.so, so GNU ships
+            # helpers like rcs2log that way).  They are not loadable
+            # libraries and are absent from GNU's own EmacsConfig; skip
+            # anything that is not a real ELF shared object.
+            with open(path, 'rb') as probe:
+                magic = probe.read(4)
+            if magic != b'\x7fELF':
+                skipped.append(fn)
+                continue
+            libs[fn] = set(read_needed(path))
+    if skipped:
+        print('skipped non-ELF lib*.so payloads (GNU executable wrappers): '
+              + ', '.join(skipped))
     if not libs:
-        raise SystemExit('error: no .so files under %s' % jni_dir)
+        raise SystemExit('error: no ELF .so libraries under %s' % jni_dir)
     order = compute_order(libs)
     entries = ', '.join('"%s"' % n for n in order)
     content = (
