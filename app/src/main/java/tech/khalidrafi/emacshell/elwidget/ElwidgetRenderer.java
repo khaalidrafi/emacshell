@@ -230,7 +230,8 @@ final class ElwidgetRenderer {
                 ? manager.getAppWidgetInfo(widgetId) : null;
         if (info != null && info.provider != null)
             target = info.provider;
-        Intent intent = new Intent(context, target);
+        Intent intent = new Intent();
+        intent.setComponent(target);
         intent.setAction(ElwidgetProvider.ACTION_TAP);
         intent.putExtra(ElwidgetProvider.EXTRA_APPWIDGET_ID, widgetId);
         intent.putExtra(ElwidgetProvider.EXTRA_SPEC, specName);

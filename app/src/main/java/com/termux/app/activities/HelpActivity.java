@@ -34,7 +34,8 @@ public final class HelpActivity extends Activity {
         mWebView = new WebView(this);
         WebSettings settings = mWebView.getSettings();
         settings.setCacheMode(WebSettings.LOAD_NO_CACHE);
-        settings.setAppCacheEnabled(false);
+        // setAppCacheEnabled was removed from the SDK stubs (AppCache is
+        // dead); the cache mode above already disables it effectively.
         setContentView(progressLayout);
         mWebView.clearCache(true);
 
