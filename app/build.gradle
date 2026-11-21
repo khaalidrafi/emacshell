@@ -258,20 +258,66 @@ def installBootstrapZip = { String flavorName ->
             "(sha256 ${actual.substring(0, 12)}...)")
 }
 
-// NOTE: applicationVariants.all fires once per VARIANT (debug AND release),
-// so a bare tasks.register here throws DuplicateTaskException on the second
-// variant of the same flavor.  Register each per-flavor task exactly once
-// (findByName first) and wire every variant's preBuild to it.
+// One shared installBootstrap task, parameterized at EXECUTION time by
+// the flavor(s) this invocation requested.  Rationale: AGP 8 wires the
+// shared (flavorless-named) native tasks -- configureNdkBuildRelease /
+// buildNdkBuildRelease -- to the LAST variant's preBuild
+// (preDistroReleaseBuild), so that task graph leaks into assembleTermux-
+// Release too (run 44908825328: installBootstrapForDistro executed
+// inside a termux build and failed on the absent distro zip).  Wiring a
+// per-flavor task to "its" variant's preBuild therefore cannot work:
+// one task that reads the requested flavor is the honest shape.
+//
+// The bootstrap zip must land at src/main/cpp/bootstrap-<arch>.zip
+// BEFORE the (shared) NDK task runs, which every variant preBuild
+// precedes -- wiring the task to every variant's preBuild gives exactly
+// that ordering.
+def installBootstrapTask = tasks.register('installBootstrap') {
+    group = 'emacshell'
+    description = 'Verify and install the pinned bootstrap zip for the requested flavor.'
+    doLast {
+        def flavors = [] as Set
+        gradle.startParameter.taskNames.each { name ->
+            def n = name.toLowerCase()
+            if (n.contains('termux')) flavors << 'termux'
+            if (n.contains('distro')) flavors << 'distro'
+        }
+        def requested = new ArrayList(flavors).sort()
+        if (requested.size() > 1)
+            throw new GradleException(
+                "This invocation builds ${requested} in one graph; the " +
+                "native build tasks are shared between flavors, so build " +
+                "one flavor per invocation (assembleTermuxRelease or " +
+                "assembleDistroRelease).")
+        if (requested.empty)
+            throw new GradleException(
+                "installBootstrap could not detect the requested flavor " +
+                "from ${gradle.startParameter.taskNames}; run " +
+                "assembleTermuxRelease or assembleDistroRelease.")
+        installBootstrapZip(requested[0])
+    }
+}
+
+def installDistroRootfsTask = tasks.register('installDistroRootfs') {
+    group = 'emacshell'
+    description = 'Verify and install the pinned Alpine rootfs asset.'
+    doLast {
+        def flavors = [] as Set
+        gradle.startParameter.taskNames.each { name ->
+            if (name.toLowerCase().contains('distro')) flavors << 'distro'
+        }
+        if (flavors.empty) {
+            println('Skipping installDistroRootfs: distro flavor not requested.')
+            return
+        }
+        installDistroRootfs()
+    }
+}
+
 android.applicationVariants.all { variant ->
     if (!variant.flavorName) return
-    def flavorName = variant.flavorName
-    def taskName = "installBootstrapFor${flavorName.capitalize()}"
-    def task = tasks.findByName(taskName) ?: tasks.register(taskName) {
-        group = 'emacshell'
-        description = "Verify and install the pinned ${flavorName} bootstrap zip."
-        doLast { installBootstrapZip(flavorName) }
-    }
-    variant.preBuildProvider.get().dependsOn(task)
+    variant.preBuildProvider.get().dependsOn installBootstrapTask,
+                                                  installDistroRootfsTask
 }
 
 // --------------------------------------------------------------------------
@@ -318,15 +364,9 @@ def installDistroRootfs = {
 
 // Same per-VARIANT (not per-flavor) registration trap as above:
 // distroDebug and distroRelease both land here -- register once.
-android.applicationVariants.all { variant ->
-    if (variant.flavorName != 'distro') return
-    def task = tasks.findByName('installDistroRootfs') ?: tasks.register('installDistroRootfs') {
-        group = 'emacshell'
-        description = 'Verify and install the pinned Alpine rootfs asset.'
-        doLast { installDistroRootfs() }
-    }
-    variant.preBuildProvider.get().dependsOn(task)
-}
+// (installDistroRootfs is registered once above, next to
+// installBootstrap, and no-ops unless the distro flavor was requested;
+// it is wired to every variant's preBuild together with that task.)
 
 // Dependency set carried over from termux-app v0.118.3 app/build.gradle
 // (versions frozen deliberately), plus our own modules.
