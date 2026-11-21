@@ -88,8 +88,8 @@ jobs:
           set -euxo pipefail
           echo "ANDROID_HOME=${ANDROID_HOME}"
           install=""
-          [ -d "${ANDROID_HOME}/platforms/android-35" ] \
-            || install="${install} platforms;android-35"
+          [ -d "${ANDROID_HOME}/platforms/android-36" ] \
+            || install="${install} platforms;android-36"
           [ -d "${ANDROID_HOME}/build-tools/35.0.0" ] \
             || install="${install} build-tools;35.0.0"
           [ -d "${ANDROID_HOME}/ndk/27.0.12077973" ] \

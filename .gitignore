@@ -18,6 +18,9 @@ local.properties
 # scripts/extract-gnu-apk.sh before they ever land here).
 emacs/src/main/jniLibs/
 emacs/src/main/assets/
+# Generated from the extracted .so set by scripts/gen-emacs-config.py
+# (GNU's own Android build generates the same file after ndk-build).
+emacs/src/main/java/org/gnu/emacs/EmacsConfig.java
 
 # Custom-prefix bootstrap build outputs (pins/bootstrap-*.sha256).
 bootstrap/

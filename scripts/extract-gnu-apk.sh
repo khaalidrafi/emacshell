@@ -21,6 +21,9 @@
 # Output (all gitignored; never committed):
 #   emacs/src/main/jniLibs/<abi>/*.so   from APK lib/<abi>/
 #   emacs/src/main/assets/...           from APK assets/
+#   emacs/src/main/java/org/gnu/emacs/EmacsConfig.java
+#                                       regenerated from the .so set
+#                                       (scripts/gen-emacs-config.py)
 #
 # The assets land directly under the module assets root (assets/lisp/...,
 # assets/etc/..., assets/directory-tree, ...) because Emacs's C runtime
@@ -133,3 +136,11 @@ marker="${ROOT}/build/gnu-apk-extracted"
 mkdir -p "$(dirname "${marker}")"
 printf '%s\n' "${pin} ${api} ${abi} ${version}" > "${marker}"
 echo "Recorded extraction provenance: ${pin} ${api} ${abi} ${version}"
+
+# Regenerate EmacsConfig.java for the :emacs module.  GNU's Android
+# build generates it from the freshly-built ndk libraries; we recompute
+# it from the pinned APK's libraries (DT_NEEDED, dependencies first) so
+# the vendored Java layer compiles standalone.  See the script header.
+config="${emacs_module}/src/main/java/org/gnu/emacs/EmacsConfig.java"
+"${PYTHON3:-python3}" "${ROOT}/scripts/gen-emacs-config.py" \
+    "${jniLibs_dir}" "${config}"
