@@ -310,7 +310,7 @@ def installDistroRootfsTask = tasks.register('installDistroRootfs') {
             println('Skipping installDistroRootfs: distro flavor not requested.')
             return
         }
-        installDistroRootfs()
+        installAlpineRootfs()
     }
 }
 
@@ -330,7 +330,7 @@ android.applicationVariants.all { variant ->
 // (gitignored); this task re-verifies the pin and installs it into the
 // flavor asset directory before the asset merge task runs.
 // --------------------------------------------------------------------------
-def installDistroRootfs = {
+def installAlpineRootfs = {
     def pinFile = rootProject.file("pins/alpine-rootfs-aarch64.sha256")
     if (!pinFile.exists())
         throw new GradleException("Missing ${pinFile}. See scripts/prepare-distro-rootfs.sh.")
