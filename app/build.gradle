@@ -258,10 +258,15 @@ def installBootstrapZip = { String flavorName ->
             "(sha256 ${actual.substring(0, 12)}...)")
 }
 
+// NOTE: applicationVariants.all fires once per VARIANT (debug AND release),
+// so a bare tasks.register here throws DuplicateTaskException on the second
+// variant of the same flavor.  Register each per-flavor task exactly once
+// (findByName first) and wire every variant's preBuild to it.
 android.applicationVariants.all { variant ->
     if (!variant.flavorName) return
     def flavorName = variant.flavorName
-    def task = tasks.register("installBootstrapFor${flavorName.capitalize()}") {
+    def taskName = "installBootstrapFor${flavorName.capitalize()}"
+    def task = tasks.findByName(taskName) ?: tasks.register(taskName) {
         group = 'emacshell'
         description = "Verify and install the pinned ${flavorName} bootstrap zip."
         doLast { installBootstrapZip(flavorName) }
@@ -311,9 +316,11 @@ def installDistroRootfs = {
             "(sha256 ${actual.substring(0, 12)}...)")
 }
 
+// Same per-VARIANT (not per-flavor) registration trap as above:
+// distroDebug and distroRelease both land here -- register once.
 android.applicationVariants.all { variant ->
     if (variant.flavorName != 'distro') return
-    def task = tasks.register("installDistroRootfs") {
+    def task = tasks.findByName('installDistroRootfs') ?: tasks.register('installDistroRootfs') {
         group = 'emacshell'
         description = 'Verify and install the pinned Alpine rootfs asset.'
         doLast { installDistroRootfs() }
