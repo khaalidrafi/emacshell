@@ -138,7 +138,7 @@ fi
 echo "Building the '${flavor}' bootstrap (TERMUX_APP__PACKAGE_NAME=${app_id}) from ${src}"
 
 # --- patch the pinned tree for emacshell (idempotent, fail-loud) ---------------
-# Two deliberate deviations from the pinned tree, re-applied on every
+# THREE deliberate deviations from the pinned tree, re-applied on every
 # clone.  A future pin bump that changes these lines FAILS here,
 # forcing a deliberate re-review instead of silently shipping (see
 # REVIEW.org 'Bootstrap upstream patches').
@@ -159,6 +159,20 @@ echo "Building the '${flavor}' bootstrap (TERMUX_APP__PACKAGE_NAME=${app_id}) fr
 #      TERMUX_PKG_ESSENTIAL).  Upstream's own bootstrap builder
 #      breaks with "ERROR: No package bzip2 found" until this is
 #      fixed there; swap the entry to libbz2 (functionally identical).
+#
+#   3. scripts/build-bootstraps.sh moves the finished zip into
+#      $TERMUX_PACKAGES_DIRECTORY (the repo root of the bind mount).
+#      run-docker.sh loads upstream's RESTRICTED AppArmor profile on
+#      the container, which denies writes there except under paths
+#      starting with 'o':
+#          deny /home/builder/termux-packages/[^o]** wlk,
+#          allow /home/builder/termux-packages/output/** rw,
+#      So the final `mv` fails with "Permission denied" REGARDLESS of
+#      unix permissions (AppArmor is mandatory access control; a
+#      chmod cannot override it -- proven by run 44366062598, where
+#      the chmod fix still died at the same mv).  Redirect the zip
+#      into $TERMUX_BUILT_DEBS_DIRECTORY (output/), the path upstream
+#      explicitly allows for build artifacts.
 properties_file="${src}/scripts/properties.sh"
 bootstraps_file="${src}/scripts/build-bootstraps.sh"
 if grep -qE '^TERMUX_APP__PACKAGE_NAME=' "${properties_file}"; then
@@ -173,6 +187,15 @@ if grep -q '"bzip2"' "${bootstraps_file}"; then
     echo "error: ${bootstraps_file} still references the removed 'bzip2' package; the pinned tree changed -- re-derive the emacshell patches (REVIEW.org 'Bootstrap upstream patches')" >&2
     exit 1
 fi
+# Patch 3: land the zip in output/ (AppArmor-allowed) instead of the
+# repo root (AppArmor-denied).  mkdir -p in case no deb was produced
+# yet (the dir normally exists because every package build drops its
+# .debs there).
+sed -i 's|^\tmv -f "${BOOTSTRAP_TMPDIR}/bootstrap-${1}.zip" "\$TERMUX_PACKAGES_DIRECTORY/"$|\tmkdir -p "${TERMUX_BUILT_DEBS_DIRECTORY}"\n\tmv -f "${BOOTSTRAP_TMPDIR}/bootstrap-${1}.zip" "${TERMUX_BUILT_DEBS_DIRECTORY}/"|' "${bootstraps_file}"
+if ! grep -q 'mv -f "${BOOTSTRAP_TMPDIR}/bootstrap-${1}.zip" "${TERMUX_BUILT_DEBS_DIRECTORY}/"' "${bootstraps_file}"; then
+    echo "error: ${bootstraps_file} still moves the zip into the AppArmor-denied repo root; the pinned tree changed -- re-derive the emacshell patches (REVIEW.org 'Bootstrap upstream patches')" >&2
+    exit 1
+fi
 
 # --- run the upstream docker builder ------------------------------------------
 # TERMUX_DOCKER_EXEC_EXTRA_ARGS is how run-docker.sh forwards environment
@@ -184,20 +207,6 @@ if [ "${flavor}" = "distro" ]; then
     # boot.  (--add appends one package per flag.)
     build_args+=(--add proot --add proot-distro)
 fi
-
-# --- make the checkout root writable by the container user ---------------------
-# run-docker.sh bind-mounts this checkout at /home/builder/termux-packages
-# and the builder image runs as `builder` (uid 1000); the CI runner user
-# owns the clone (uid 1001, mode 755).  Upstream build-bootstraps.sh ends
-# with `mv -f "${BOOTSTRAP_TMPDIR}/bootstrap-${arch}.zip"
-# "$TERMUX_PACKAGES_DIRECTORY/"` -- a write into the repo ROOT of the
-# bind mount, the one place `builder` cannot write.  Run 44333060244:
-# the entire ~100-package build succeeded and ONLY this final mv failed
-# ("Permission denied"), losing ~2h of CI per flavor on a permissions
-# detail.  Widen the TOP directory only (non-recursive: package builds
-# happen inside the container's own ~/.termux-build; the repo root is
-# touched only by the final zip mv), so the zip can land.
-chmod a+w "${src}"
 
 (
     cd "${src}"
