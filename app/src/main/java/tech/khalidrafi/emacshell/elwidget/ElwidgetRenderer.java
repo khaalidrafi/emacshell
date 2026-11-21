@@ -1,6 +1,9 @@
 package tech.khalidrafi.emacshell.elwidget;
 
 import android.app.PendingIntent;
+import android.appwidget.AppWidgetManager;
+import android.appwidget.AppWidgetProviderInfo;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Bitmap;
@@ -214,7 +217,20 @@ final class ElwidgetRenderer {
     }
 
     private PendingIntent tapPI(String action, String arg) {
-        Intent intent = new Intent(context, ElwidgetProvider.class);
+        // Target the component that actually hosts this widget id (one
+        // of the ElwidgetProvider4x{1,2,3} subclasses); an explicit
+        // intent at the base class would be undeliverable because the
+        // base class is not a manifest component.
+        // Default to the smallest declared size; overridden below with
+        // the component actually hosting this widget.
+        ComponentName target = new ComponentName(context,
+                ElwidgetProvider.PROVIDER_CLASSES[0]);
+        AppWidgetManager manager = AppWidgetManager.getInstance(context);
+        AppWidgetProviderInfo info = manager != null
+                ? manager.getAppWidgetInfo(widgetId) : null;
+        if (info != null && info.provider != null)
+            target = info.provider;
+        Intent intent = new Intent(context, target);
         intent.setAction(ElwidgetProvider.ACTION_TAP);
         intent.putExtra(ElwidgetProvider.EXTRA_APPWIDGET_ID, widgetId);
         intent.putExtra(ElwidgetProvider.EXTRA_SPEC, specName);
