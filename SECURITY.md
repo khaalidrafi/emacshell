@@ -45,7 +45,11 @@ Two rules follow from the table:
 - No keystore, password or certificate is ever committed.  CI signs
   with `EMACSHELL_KEYSTORE_B64` / `EMACSHELL_KEYSTORE_PASSWORD`
   repository secrets; when absent, artifacts are uploaded **unsigned
-  with a warning** rather than self-signed with a fake key.
+  with a warning** rather than self-signed with a fake key.  Such
+  artifacts carry no signature at all, so `adb install` rejects them
+  with `INSTALL_PARSE_FAILED_NO_CERTIFICATES`; re-sign locally with
+  `apksigner` (any throwaway keystore is fine for testing) or
+  configure the secrets and rebuild before installing.
 - The release key should be generated offline
   (`keytool -genkeypair -keystore emacshell-release.jks -keyalg RSA
   -keysize 4096 -validity 10000`), never stored in CI logs, and its
