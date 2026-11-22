@@ -153,6 +153,63 @@ constant smuggled through =BuildConfig=.
   =useLegacyPackaging= keep them on the filesystem where the Emacs
   loader expects them.
 
+* The usage bridge (org-activity)
+
+The Owner's order (2026-11-22): org-activity must reach full StayFree
+/ ActivityWatch parity on Android, and "patch the Emacshell app if
+necessary" — so the app answers, not an Emacs fork.  The constraint
+set:
+
+- The app's law is *No Emacs C rebuild, ever*; the Emacs Android port
+  also exposes no generic Java interop, so no new Lisp primitive can
+  exist without rebuilding ~libemacs.so~.
+- The manifest already declares
+  =android.permission.PACKAGE_USAGE_STATS= (inherited from termux-app),
+  and Usage Access is a Settings flip, not a runtime dialog.
+- Emacs and the app share the process AND the files dir — =HOME= for
+  the Emacs Android port IS =getFilesDir()=.
+
+=tech.khalidrafi.emacshell.EmacshellUsageServer= (started from
+=EmacshellApplication.onCreate=) therefore binds =127.0.0.1= on an
+ephemeral port and writes two files into the files dir:
+=emacshell-usage-port= and =emacshell-usage-secret= — readable by
+Emacs as =~/emacshell-usage-port= / =~/emacshell-usage-secret= (the
+org-activity client's defaults), unreadable by any other app
+(different UID, loopback is device-shared — hence the per-boot
+secret gating every request).
+
+Protocol: one line per request, one line of JSON per response, one
+request per connection:
+
+#+BEGIN_EXAMPLE
+  STATS <secret> <begin-ms> <end-ms>
+    -> {"granted":true,"apps":[{"package":...,"label":...,
+         "lastUsedMs":N,"foregroundMs":N}]}          ; aggregate query
+
+  EVENTS <secret> <begin-ms> <end-ms>
+    -> {"granted":true,"events":[{"package":...,"type":"resume",
+         "tsMs":N}]}   ; filtered stream: resume, pause, screen_on,
+                         screen_off, keyguard_shown, keyguard_hidden,
+                         notification_seen
+
+  PING <secret> -> {"ok":true,"granted":BOOL}
+#+END_EXAMPLE
+
+=EVENTS= is what makes StayFree parity real: opens (resume counts),
+unlocks (keyguard_hidden, screen_on fallback below API 30),
+notification counts (notification_seen, API 29+) and the hour-of-day
+timeline (resume→pause sessions) — the same signals StayFree itself
+derives.  Honest limits: the keyguard/screen event types exist only
+from API 30 and notification_seen from API 29; older devices simply
+never emit them (documented in org-activity, not hidden here).
+
+Failure discipline: the server thread is a daemon; any per-connection
+exception is logged and dropped; a bind failure disables the bridge
+for that boot.  Ungranted Usage Access returns
+={"granted":false,"hint":...}= so the client can point the user at
+Settings.  Nothing about the bridge runs a query unless Emacs asks —
+battery cost is an idle =accept()=.
+
 * What is deliberately NOT done
 
 - No Emacs C rebuild, ever: the =-29= arm64 APK is the artifact of

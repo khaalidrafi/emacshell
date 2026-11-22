@@ -170,6 +170,33 @@ The habit check marks flip instantly via a shadow state file; Emacs is
 authoritative again on the next sync (the first-boot `init.el` wires
 `focus-in-hook` + a 15 s poller).
 
+## org-activity — native Usage Access (the usage bridge)
+
+emacshell is the native Android home for
+[org-activity](https://github.com/khaalidrafi/org-activity) (a
+StayFree / ActivityWatch-parity tracker that journals into plain
+Org). The app runs a token-gated loopback server
+(`EmacshellUsageServer`, started at boot) that exposes
+`UsageStatsManager` to the Emacs inside this app: per-app screen
+time, opens, screen unlocks, notification counts and the
+hour-of-day timeline — no export step, no third-party app, and no
+Emacs rebuild (see DESIGN.org, "The usage bridge").
+
+Setup: grant emacshell **Usage access** once (Android Settings →
+Special app access → Usage access), then from Emacs:
+
+```elisp
+(require 'org-activity-android)
+M-x org-activity-android-refresh     ;; bridge -> journal
+M-x org-activity-android-report      ;; StayFree-style report
+```
+
+The port and the per-boot secret are auto-discovered via
+`~/emacshell-usage-port` / `~/emacshell-usage-secret` (the app's
+private files dir, which is HOME for the Emacs Android port). On
+stock org.gnu.emacs or Termux Emacs builds the files are unreadable
+by design, and org-activity falls back to its export-file path.
+
 ## Personal configuration
 
 The APK ships **no personal configuration**: only what the APK itself

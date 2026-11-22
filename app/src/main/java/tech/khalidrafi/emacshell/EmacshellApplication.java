@@ -48,6 +48,9 @@ import java.io.OutputStream;
  *      ~/.emacs.d/init.el during startup and must not race us).
  *   5. Bootstrap + (distro flavor) Alpine rootfs staging, deferred until
  *      the first activity resumes; see onActivityResumed.
+ *   6. The usage bridge (EmacshellUsageServer): a token-gated loopback
+ *      server through which the Emacs inside this app reads Android
+ *      Usage Access natively (org-activity's StayFree-parity path).
  */
 public final class EmacshellApplication extends Application
         implements Application.ActivityLifecycleCallbacks {
@@ -79,6 +82,10 @@ public final class EmacshellApplication extends Application
            widgets re-draw while this process (which also hosts Emacs)
            is alive.  No-op until Emacs has created the tree once. */
         ElwidgetWatcher.ensure(this);
+
+        /* --- org-activity usage bridge (loopback, token-gated; see
+               EmacshellUsageServer) --- */
+        EmacshellUsageServer.start(this);
 
         /* TermuxInstaller.setupBootstrapIfNeeded needs an Activity for
            its progress and error dialogs, so the bootstrap is started
