@@ -2,7 +2,7 @@
 
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;; Author: GLM 5.3 <glm-5.3@z.ai>
-;; Version: 0.2.0
+;; Version: 0.3.0
 ;; Package-Requires: ((emacs "27.1") (org "9.3"))
 ;; Keywords: widgets, org, android
 
@@ -15,7 +15,7 @@
 ;;   org-tasks   -- next TODO entries, tappable to DONE
 ;;   org-habits  -- the habit list (loophabits when installed, else
 ;;                  Org's own STYLE=habit entries)
-;;   org-clock   -- what is clocked right now + duration
+;;   org-clock   -- clock in / clock out / what is clocked right now
 ;;   org-table   -- a named org table, rendered as rows
 ;;
 ;; Everything renders OFFLINE from the files; no network.  The
@@ -29,10 +29,18 @@
 ;; headings come from `org-entry-is-todo-p', `org-entry-is-done-p'
 ;; and `org-get-heading'; stable tap ids are minted by
 ;; `org-id-get-create' AT the collected entry (no heading-text
-;; matching); habit detection is Org's STYLE=habit convention
-;; (`org-is-habit-p' from the built-in org-habit library); and
-;; table rows are split by `org-table-to-lisp' once `org-element'
-;; has located the named table.
+;; matching); habit "done today" is `org-habit-parse-todo' (the
+;; consistency graph's own parser) checked against `org-today';
+;; the clock widget's recents are `org-clock-history' and the
+;; in/out commands are `org-clock-in'/`org-clock-out' themselves;
+;; and table rows are split by `org-table-to-lisp' once
+;; `org-element' has located the named table.
+;;
+;; Tap feedback: check nodes use the "toggle" action so the app's
+;; shadow state flips them instantly (Owner order 2026-11-23:
+;; "Add some widgets to the Emacshell for clocking, habit updating
+;; etc. basic Org tasks"); Emacs re-renders authoritatively on the
+;; next sync (the 15 s poller / `focus-in-hook').
 ;;
 ;; `(elwidget-org-register-widgets)' defines all of them.
 
@@ -47,7 +55,10 @@
 
 (declare-function loophabits-toggle "loophabits" (id))
 (declare-function loophabits-elwidget-tree "loophabits" ())
+(declare-function loophabits-elwidget-state "loophabits" ())
 (declare-function org-is-habit-p "org-habit" (&optional epom))
+(declare-function org-habit-parse-todo "org-habit" (&optional epom))
+(declare-function org-habit-done-dates "org-habit" (habit))
 
 (defgroup elwidget-org nil
   "Org-built widgets for the elwidget widget maker."
@@ -69,6 +80,10 @@
   "How many rows the org-agenda widget shows."
   :type 'natnum)
 
+(defcustom elwidget-org-clock-recent-count 4
+  "How many recent entries the org-clock widget offers to clock in."
+  :type 'natnum)
+
 (defcustom elwidget-org-accent "#89b4fa"
   "Accent color for times and counters."
   :type 'string)
@@ -83,11 +98,13 @@
 
 ;;; --- entry collection --------------------------------------------------------
 
-(defun elwidget-org--collect (predicate)
+(defun elwidget-org--collect (predicate &optional done-fn)
   "Collect (TITLE KEYWORD DONE ID) for entries where PREDICATE holds.
 PREDICATE runs with point at the headline, `org-map-entries'
 style, so it can call `org-entry-get', `org-is-habit-p' and
-friends directly.  Collection itself is Org's scanner:
+friends directly.  DONE is what DONE-FN returns when given,
+`org-entry-is-done-p' otherwise -- the habit list passes its own
+reading there.  Collection itself is Org's scanner:
 `org-map-entries' walks each file (archived subtrees skipped,
 like the agenda), `org-get-heading' and `org-get-todo-state'
 produce the title and keyword, and `org-id-get-create' mints the
@@ -105,7 +122,8 @@ is saved only when an id was actually minted in it."
                                   (setq minted t))
                                 (list (org-get-heading t t)
                                       (org-get-todo-state)
-                                      (org-entry-is-done-p)
+                                      (funcall (or done-fn
+                                                   #'org-entry-is-done-p))
                                       (org-id-get-create))))
                             nil 'file 'archive))
               (when entry (push entry out)))
@@ -197,7 +215,7 @@ minting happen in `elwidget-org--collect'."
              (id (nth 3 e)))
         (nconc nodes
                (list
-                `(:row (:check off :action "org-todo" :arg ,id
+                `(:row (:check off :action "toggle" :arg ,id
                                :color ,elwidget-org-done-color)
                        (:text ,(truncate-string-to-width
                                 (concat (when kw (concat kw " ")) title)
@@ -207,12 +225,20 @@ minting happen in `elwidget-org--collect'."
       (nconc nodes (list '(:text "No open tasks" :size 13))))
     nodes))
 
+(defun elwidget-org--tasks-state ()
+  "Shadow state for org-tasks: every open task's id starts unchecked."
+  (mapcar (lambda (e) (cons (nth 3 e) 0))
+          (elwidget-org--todo-entries)))
+
 (defun elwidget-org--todo-on-event (action arg)
-  "Handle an \"org-todo\" tap: cycle the entry with org-id ARG.
+  "Handle an org-tasks tap: cycle the entry with org-id ARG.
 `org-id-find' locates the heading (ids are minted at collection
 time), then `org-todo' does the actual state change -- including
-Org's habit semantics when the entry carries a repeater."
-  (when (equal action "org-todo")
+Org's habit semantics when the entry carries a repeater.  The
+action is \"toggle\" (the shadow-state word, so the app flips the
+check instantly) or the older \"org-todo\" spelling from specs
+rendered before v0.3.0."
+  (when (member action '("toggle" "org-todo"))
     (let ((m (ignore-errors (org-id-find arg 'marker))))
       (when (and m (marker-buffer m))
         (with-current-buffer (marker-buffer m)
@@ -225,17 +251,37 @@ Org's habit semantics when the entry carries a repeater."
 
 ;;; --- org-habits --------------------------------------------------------------
 
+(defun elwidget-org--habit-done-today-p ()
+  "Non-nil when the habit at point was done today.
+Org's own reading, not a reimplementation: `org-habit-parse-todo'
+(the parser behind the consistency graph) returns the done-dates
+and `org-today' is today's day number.  A habit whose schedule or
+repeater is missing or malformed (parse-todo errors) falls back
+to the TODO state, and so does a stock Org without org-habit."
+  (if (require 'org-habit nil t)
+      (let ((habit (ignore-errors (org-habit-parse-todo))))
+        (if habit
+            (and (member (org-today) (org-habit-done-dates habit)) t)
+          (org-entry-is-done-p)))
+    (org-entry-is-done-p)))
+
+(defun elwidget-org--habit-entries ()
+  "STYLE=habit entries as (TITLE KEYWORD DONE-TODAY ID)."
+  (elwidget-org--collect #'org-is-habit-p
+                         #'elwidget-org--habit-done-today-p))
+
 (defun elwidget-org--habits-render ()
   "Render the org-habits widget tree.
 With the personal loophabits package installed, delegate to it
 (shadow state, instant flips).  Otherwise render Org's own habit
 convention -- STYLE=habit entries, as understood by the built-in
 org-habit library -- instead of demanding an external package:
-reuse over reimplementation (Owner order 2026-11-18)."
-  (if (require 'loophabits nil t)
+reuse over reimplementation (Owner order 2026-11-18).  The check
+state is \"done today\" per the consistency graph's own parser."
+  (if (require 'lophabits nil t)
       (loophabits-elwidget-tree)
     (if (require 'org-habit nil t)
-        (let* ((entries (elwidget-org--collect #'org-is-habit-p))
+        (let* ((entries (elwidget-org--habit-entries))
                (shown (seq-take entries elwidget-org-habit-count)))
           (if (null entries)
               '(:text "No STYLE=habit entries" :size 13)
@@ -245,7 +291,7 @@ reuse over reimplementation (Owner order 2026-11-18)."
              (mapcar
               (lambda (e)
                 `(:row (:check ,(if (nth 2 e) t 'off)
-                               :action "org-todo" :arg ,(nth 3 e)
+                               :action "toggle" :arg ,(nth 3 e)
                                :color ,elwidget-org-done-color)
                        (:text ,(truncate-string-to-width
                                 (nth 0 e) 30 nil nil "...")
@@ -253,38 +299,114 @@ reuse over reimplementation (Owner order 2026-11-18)."
               shown))))
       '(:text "org-habit is not available" :size 13))))
 
+(defun elwidget-org--habits-state ()
+  "Shadow state for org-habits (id -> done-today 0/1).
+loophabits owns its own state function when it is installed."
+  (if (require 'lophabits nil t)
+      (loophabits-elwidget-state)
+    (mapcar (lambda (e) (cons (nth 3 e) (if (nth 2 e) 1 0)))
+            (elwidget-org--habit-entries))))
+
 (defun elwidget-org--habits-on-event (action arg)
   "Handle habit taps.
 \"toggle\" goes to loophabits when it is installed; the built-in
-habit list reuses the org-tasks tap (`elwidget-org--todo-on-event')."
-  (cond ((and (require 'loophabits nil t)
+habit list reuses the org-tasks tap (`elwidget-org--todo-on-event')
+-- `org-todo' on a repeater habit logs today's done date and
+advances the schedule, exactly what the consistency graph reads."
+  (cond ((and (require 'lophabits nil t)
               (equal action "toggle"))
          (loophabits-toggle arg)
          t)
-        ((equal action "org-todo")
+        ((member action '("toggle" "org-todo"))
          (elwidget-org--todo-on-event action arg))))
 
 ;;; --- org-clock ---------------------------------------------------------------
 
+(defun elwidget-org--clock-running-p ()
+  "Non-nil when Org has a live clock right now."
+  (and (bound-and-true-p org-clock-hd-marker)
+       (marker-buffer org-clock-hd-marker)
+       (bound-and-true-p org-clock-start-time)))
+
+(defun elwidget-org--clock-recent-entries ()
+  "Recently clocked entries ((TITLE ID)...), most recent first.
+The list IS `org-clock-history' -- Org's own recency record of
+clocked headings (markers, newest first) -- filtered to live
+markers and deduplicated.  ids are minted AT each entry, so a tap
+keeps working across renders and history rotation."
+  (let ((seen nil) (out))
+    (dolist (m (and (listp org-clock-history) org-clock-history))
+      (when (and (markerp m) (marker-buffer m))
+        (let ((key (list (marker-buffer m) (marker-position m))))
+          (unless (member key seen)
+            (push key seen)
+            (with-current-buffer (marker-buffer m)
+              (save-excursion
+                (save-restriction
+                  (widen)
+                  (goto-char m)
+                  (let ((title (org-get-heading t t)))
+                    (when (and (stringp title) (not (string= title "")))
+                      (let ((had-id (org-entry-get (point) "ID"))
+                            (id (org-id-get-create)))
+                        (unless had-id (save-buffer))
+                        (when id (push (list title id) out))))))))))))
+    (nreverse out)))
+
 (defun elwidget-org--clock-render ()
-  "Render the org-clock widget tree."
-  (if (and (bound-and-true-p org-clock-hd-marker)
-           (marker-buffer org-clock-hd-marker)
-           (bound-and-true-p org-clock-start-time))
+  "Render the org-clock widget tree (a LIST of nodes).
+Running: heading, live duration, a CLOCK OUT button.  Idle: the
+recent-clock list (Org's own `org-clock-history') as CLOCK IN
+buttons -- most recent first, so the top row resumes the last
+task."
+  (if (elwidget-org--clock-running-p)
       (let* ((duration (/ (float-time
                           (time-subtract (current-time)
                                          org-clock-start-time))
                          60.0))
              (hours (floor (/ duration 60)))
              (mins (floor (mod duration 60))))
-        `(:text ,(if (stringp org-clock-heading)
-                     (truncate-string-to-width org-clock-heading 36 nil nil "…")
-                   "Clocked in")
-                :size 14 :bold t
-                :row (:text ,(format "%dh %02dm" hours mins)
-                            :size 22 :color ,elwidget-org-accent)
-                :bar :height 2 :color "#45475a"))
-    '(:text "Not clocked in" :size 14)))
+        (list
+         `(:text ,(if (stringp org-clock-heading)
+                      (truncate-string-to-width org-clock-heading 34 nil nil "…")
+                    "Clocked in")
+                 :size 14 :bold t)
+         `(:row (:text ,(format "%dh %02dm" hours mins)
+                       :size 22 :color ,elwidget-org-accent)
+                (:button "Clock out" :action "clock-out" :arg "now"))
+         '(:bar :height 2 :color "#45475a")))
+    (let ((recent (seq-take (elwidget-org--clock-recent-entries)
+                            elwidget-org-clock-recent-count)))
+      (if (null recent)
+          (list '(:text "Not clocked in" :size 14))
+        (append
+         (list '(:text "Not clocked in" :size 14))
+         (mapcar
+          (lambda (e)
+            `(:button ,(truncate-string-to-width (nth 0 e) 28 nil nil "…")
+                      :action "clock-in" :arg ,(nth 1 e)))
+          recent))))))
+
+(defun elwidget-org--clock-on-event (action arg)
+  "Handle org-clock widget taps.
+\"clock-out\" stops the running clock; \"clock-in\" starts one at
+the entry whose org id is in the tap.  Both are Org's own
+commands (`org-clock-out', `org-clock-in'), so the LOGBOOK, the
+clock table and `org-clock-history' all see them."
+  (cond
+   ((equal action "clock-out")
+    (ignore-errors (org-clock-out))
+    t)
+   ((equal action "clock-in")
+    (let ((m (ignore-errors (org-id-find arg 'marker))))
+      (when (and m (marker-buffer m))
+        (with-current-buffer (marker-buffer m)
+          (save-excursion
+            (save-restriction
+              (widen)
+              (goto-char m)
+              (ignore-errors (org-clock-in)))))
+        t)))))
 
 ;;; --- org-table ---------------------------------------------------------------
 
@@ -338,14 +460,17 @@ rows, as lists of strings."
   (elwidget-define "org-tasks"
     :title "Org tasks (tap to close)" :size [4 2]
     :render #'elwidget-org--tasks-render
-    :on-event #'elwidget-org--todo-on-event)
+    :on-event #'elwidget-org--todo-on-event
+    :state #'elwidget-org--tasks-state)
   (elwidget-define "org-habits"
     :title "Habit list (tap to check)" :size [4 3]
     :render #'elwidget-org--habits-render
-    :on-event #'elwidget-org--habits-on-event)
+    :on-event #'elwidget-org--habits-on-event
+    :state #'elwidget-org--habits-state)
   (elwidget-define "org-clock"
-    :title "Current clock" :size [4 1]
-    :render #'elwidget-org--clock-render)
+    :title "Org clock (in/out + recents)" :size [4 2]
+    :render #'elwidget-org--clock-render
+    :on-event #'elwidget-org--clock-on-event)
   (elwidget-define "org-table"
     :title "Org table" :size [4 2]
     :render (lambda ()

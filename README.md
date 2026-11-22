@@ -163,10 +163,24 @@ choose one of the specs Emacs has written under
 define your own with `M-x elwidget-define` — see the
 [elwidget README](https://github.com/khaalidrafi/elwidget)).
 
+The basic Org operations work right from the home screen:
+
+- **`org-clock`** — clocking: while a clock runs the widget shows the
+  task and duration plus a **Clock out** button; when idle it lists
+  the recently clocked tasks as **clock-in** buttons (the top one
+  resumes the last task). Both run Org's own `org-clock-in` /
+  `org-clock-out`, so the LOGBOOK and clock tables stay authoritative.
+- **`org-tasks`** — basic Org tasks: tap a check to cycle the entry's
+  TODO state (`org-todo`).
+- **`org-habits`** — habit updating: tap to check a habit; with the
+  personal `loophabits` package it flips instantly, otherwise Org's
+  own `STYLE=habit` entries render and "done today" comes from the
+  consistency graph's logbook reading.
+
 On Android 12+ each node (check, button) is its own tap target; on
 Android 9–11 the widget renders identically but the whole surface is a
 single open-Emacs tap (`RemoteViews.addView` does not exist there).
-The habit check marks flip instantly via a shadow state file; Emacs is
+Check marks flip instantly via the shadow state file; Emacs is
 authoritative again on the next sync (the first-boot `init.el` wires
 `focus-in-hook` + a 15 s poller).
 

@@ -283,7 +283,7 @@ public final class EmacshellUsageServer {
                 if (pkg != null)
                     o.put("package", pkg);
                 o.put("type", type);
-                o.put("tsMs", event.getTimestamp());
+                o.put("tsMs", event.getTimeStamp());
                 out.put(o);
             }
             root.put("granted", true);
@@ -314,7 +314,10 @@ public final class EmacshellUsageServer {
             return "keyguard_shown";
         case UsageEvents.Event.KEYGUARD_HIDDEN:
             return "keyguard_hidden";
-        case UsageEvents.Event.NOTIFICATION_SEEN:
+        case 10: /* NOTIFICATION_SEEN: @SystemApi, not in the public
+                    android.jar; the value is stable AOSP API and the
+                    event itself flows to any app holding Usage
+                    Access. */
             return "notification_seen";
         default:
             return null;
