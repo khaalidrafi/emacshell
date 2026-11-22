@@ -70,9 +70,19 @@ three (plus both emacshell flavors) can be installed at once.
 
 ## Installing
 
-Grab the right APK from the [build workflow
-artifacts](../../actions/workflows/build.yml) (or build it, below) and
+Grab the right APK from the [releases page](../../releases)
+(v0.1.0 and later ship **signed** APKs; the artifacts on the [build
+workflow](../../actions/workflows/build.yml) are signed too) and
 install it with `adb install` or your file manager.
+
+**Release key.** All v0.1.0+ artifacts are signed with the emacshell
+release key:
+
+```
+SHA-256: 50:A2:AA:2F:BF:52:80:DC:67:74:F6:53:77:C6:DA:C3:99:2D:CA:72:1F:80:43:0B:34:9E:57:45:B3:BB:C7:AC
+```
+
+(Verify with `apksigner verify --print-certs app.apk`.)
 
 **Which APK?** Two axes matter:
 

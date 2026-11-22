@@ -230,7 +230,7 @@ jobs:
             exit 1
           fi
           if [ -z "${KEYSTORE_B64}" ]; then
-            echo "::warning::EMACSHELL_KEYSTORE_B64 is not configured; the artifact is UNSIGNED. Install it on device with 'adb install' or configure signing secrets (SECURITY.md)."
+            echo "::warning::EMACSHELL_KEYSTORE_B64 is not configured; the artifact is UNSIGNED. It carries no signature, so re-sign it locally with apksigner before installing (SECURITY.md)."
             exit 0
           fi
           printf '%s' "${KEYSTORE_B64}" | base64 --decode > /tmp/emacshell.jks
