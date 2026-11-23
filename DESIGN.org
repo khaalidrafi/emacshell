@@ -126,7 +126,7 @@ sha256 pin in =pins/alpine-rootfs-aarch64.sha256=, verified by
 | label | Emacshell (Termux) | Emacshell (Distro) |
 | bootstrap | custom-prefix base set | same + =proot=, =proot-distro= |
 | extra asset | — | =emacshell/alpine-rootfs.tar.gz= |
-| init.el | =emacshell-open-terminal= | + =emacshell-distro-login= |
+| init.el | =emacshell-open-terminal= | + the distro commands (see below) |
 | first boot | unpack bootstrap | unpack bootstrap, then stage rootfs |
 
 Flavor selection at runtime uses the applicationId (the single source
@@ -217,6 +217,12 @@ battery cost is an idle =accept()=.
 - No background Termux service start at boot: the terminal runs only
   when asked for; Emacs keeps its own process alive.
 - No automatic writes to the user's init files after first boot.
-- No =proot-distro install= at runtime for OTHER distros (needs
-  network and the custom-prefix repo story); the bundled alpine is the
-  only offline-supported rootfs.
+- The distro is a runtime CHOICE (Owner order 2026-11-23): the bundled
+  alpine stays the only OFFLINE rootfs (first-boot staged), and
+  =M-x emacshell-distro-install= fetches any other alias proot-distro
+  knows over the network (debian, ubuntu, arch, fedora, opensuse,
+  kali...).  =emacshell-distro-name= picks the default;
+  =M-x emacshell-distro-list= shows what the installed proot-distro
+  supports; =emacshell-distro-login= completes over the installed
+  rootfs.  Everything runs through the SAME prefix's proot-distro, so
+  the custom-prefix story is unchanged.

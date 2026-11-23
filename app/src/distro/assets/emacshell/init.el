@@ -64,27 +64,107 @@ plain apps the ability to execute the system am wrapper."
                    "start" "-n" component)
     (message "Started %s" component)))
 
-(defun emacshell-distro-login ()
-  "Open a term buffer logged into the bundled Alpine rootfs.
+(defgroup emacshell nil
+  "Emacshell: GNU Emacs plus a Unix environment on Android."
+  :group 'tools)
 
-Runs `proot-distro login alpine' (from the distro bootstrap) inside an
-Emacs `term' buffer, so the full Alpine userland is available with its
-own apk package manager, in the same window system as Emacs.  The
-rootfs is unpacked from the APK by EmacshellApplication after the
-bootstrap installs; if this command complains, the bootstrap or the
-staging is still in progress (or failed -- check the notification)."
+;; The proot distro is a CHOICE (Owner order 2026-11-23: "make proot
+;; distro variable so that users can choose which distro to use").
+;; "alpine" is the one bundled in the APK (staged offline on first
+;; boot); every other alias proot-distro knows installs over the
+;; network with `emacshell-distro-install' and then logs in the same
+;; way.  `emacshell-distro-list' shows exactly what your build of
+;; proot-distro supports.
+(defcustom emacshell-distro-name "alpine"
+  "The proot-distro rootfs `emacshell-distro-login' enters.
+\"alpine\" is bundled in the APK (offline).  Any other alias known
+to proot-distro works after `emacshell-distro-install' fetches it."
+  :type '(choice (const "alpine") (const "debian") (const "ubuntu")
+                 (const "arch") (const "archlinux") (const "fedora")
+                 (const "opensuse") (const "kali") (string :tag "alias"))
+  :group 'emacshell)
+
+(defun emacshell--proot-distro ()
+  "Return the proot-distro binary path, or signal a helpful error."
+  (let ((pd (expand-file-name "bin/proot-distro" (emacshell-prefix))))
+    (unless (file-executable-p pd)
+      (user-error "proot-distro is not installed in %s (bootstrap still running?)"
+                  (emacshell-prefix)))
+    pd))
+
+(defun emacshell-distro-installed-p (distro)
+  "Non-nil when DISTRO's rootfs is staged (its bin/sh exists)."
+  (file-exists-p
+   (expand-file-name
+    "bin/sh"
+    (expand-file-name
+     (concat "var/lib/proot-distro/installed-rootfs/" distro)
+     (emacshell-prefix)))))
+
+(defun emacshell-distro-list ()
+  "List the distros this proot-distro knows (installed + installable)."
   (interactive)
-  (let* ((bin (expand-file-name "bin" (emacshell-prefix)))
-         (proot-distro (expand-file-name "proot-distro" bin))
-         (sh (expand-file-name
-              "var/lib/proot-distro/installed-rootfs/alpine/bin/sh"
-              (emacshell-prefix))))
-    (unless (file-executable-p proot-distro)
-      (user-error "proot-distro is not installed in %s" bin))
-    (unless (file-exists-p sh)
-      (user-error "Alpine rootfs is not staged yet (bootstrap still running?)"))
-    (let ((buffer (make-term "emacshell-distro" proot-distro
-                             nil "login" "alpine")))
+  (let ((pd (emacshell--proot-distro)))
+    (with-current-buffer (get-buffer-create "*emacshell-distros*")
+      (let ((inhibit-read-only t))
+        (erase-buffer)
+        (insert "$ proot-distro list\n\n"))
+      (start-process "emacshell-distro-list" (current-buffer)
+                     pd "list")
+      (special-mode)
+      (pop-to-buffer (current-buffer)))))
+
+(defun emacshell-distro-install (distro)
+  "Install DISTRO's rootfs with proot-distro (needs the network).
+Output streams into the *emacshell-distro-install* buffer; when it
+finishes, `emacshell-distro-login' enters the new rootfs.  Run
+`emacshell-distro-list' to see the exact aliases your build supports
+(common ones: alpine, debian, ubuntu, arch, fedora, opensuse, kali)."
+  (interactive
+   (list (completing-read
+          "Install distro (proot-distro alias): "
+          '("debian" "ubuntu" "arch" "archlinux" "fedora"
+            "opensuse" "kali" "alpine")
+          nil nil "debian")))
+  (let ((pd (emacshell--proot-distro))
+        (buffer (get-buffer-create "*emacshell-distro-install*")))
+    (with-current-buffer buffer
+      (let ((inhibit-read-only t))
+        (erase-buffer)
+        (insert "$ proot-distro install " distro "\n\n"))
+      (goto-char (point-max))
+      (start-process "emacshell-distro-install" buffer
+                     pd "install" distro)
+      (pop-to-buffer buffer))))
+
+(defun emacshell-distro-login (&optional distro)
+  "Open a term buffer logged into DISTRO via proot-distro.
+DISTRO defaults to `emacshell-distro-name'; interactively, choose
+among the installed rootfs.  The bundled \"alpine\" works offline
+(its rootfs is unpacked from the APK on first boot); anything else
+needs `emacshell-distro-install' first."
+  (interactive
+   (let* ((default (or emacshell-distro-name "alpine"))
+            (installed
+             (mapcar #'file-name-nondirectory
+                     (ignore-errors
+                       (directory-files
+                        (expand-file-name
+                         "var/lib/proot-distro/installed-rootfs"
+                         (emacshell-prefix))
+                        nil "^[^.]")))))
+       (unless installed
+         (user-error "No rootfs installed yet; M-x emacshell-distro-install"))
+       (list (completing-read (format "Distro (default %s): " default)
+                              installed nil t nil nil default))))
+  (let* ((distro (or distro emacshell-distro-name "alpine"))
+         (pd (emacshell--proot-distro)))
+    (unless (emacshell-distro-installed-p distro)
+      (user-error
+       "%s rootfs is not installed; M-x emacshell-distro-install RET %s"
+       distro distro))
+    (let ((buffer (make-term (format "emacshell-distro-%s" distro) pd
+                             nil "login" distro)))
       (unless (and buffer (bufferp buffer))
         (error "Could not create term buffer"))
       (switch-to-buffer buffer)
@@ -130,7 +210,6 @@ staging is still in progress (or failed -- check the notification)."
            (not (bound-and-true-p org-agenda-files)))
   (setq org-agenda-files
         (directory-files (expand-file-name "~/org") t "\\.org\\'" t)))
-
 
 ;;; init.el ends here
 

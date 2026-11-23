@@ -100,6 +100,5 @@ plain apps the ability to execute the system am wrapper."
   (setq org-agenda-files
         (directory-files (expand-file-name "~/org") t "\\.org\\'" t)))
 
-
 ;;; init.el ends here
 

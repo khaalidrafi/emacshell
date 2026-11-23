@@ -91,7 +91,7 @@ SHA-256: 50:A2:AA:2F:BF:52:80:DC:67:74:F6:53:77:C6:DA:C3:99:2D:CA:72:1F:80:43:0B
 | 10 or newer | `...-api29.apk` | The number in GNU's Emacs APK names is the *minimum* API level the build supports; `-29` is the default |
 | 9 or older | `...-api21.apk` | Same rule: `-21` runs down to Android 5; emacshell lifts the floor to 7 (Termux v0.118.3) |
 | Low RAM (1-3 GB, e.g. Redmi 8A) | the **termux** flavor | proot's syscall translation plus a second userland costs memory you do not have; `pkg install` anything you need into the prefix instead |
-| You need a full musl distro | the **distro** flavor | Bundled Alpine + `apk`, at a RAM cost |
+| You need a full distro | the **distro** flavor | Bundled Alpine (`apk`) offline — or `M-x emacshell-distro-install` for debian/ubuntu/arch/fedora/opensuse/kali; `emacshell-distro-name` is the default |
 
 Installing an api21 build over an api29 build of the same applicationId
 (or vice versa) is a versionCode switch between variants — it works as
