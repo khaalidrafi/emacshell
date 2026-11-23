@@ -162,20 +162,22 @@ jobs:
             -gpu swiftshader_indirect -noaudio -no-boot-anim
             -camera-back none -camera-front none
           script: |
-            set -euxo pipefail
+            # POSIX sh (dash): the action runs this via /usr/bin/sh, so no
+            # `set -o pipefail` and no PIPESTATUS -- redirect + $? instead
+            # (run 45193434006 died on exactly that).
+            set -eux
             APP_APK="$(find app/build/outputs/apk -name '*.apk' ! -name '*androidTest*' | head -n1)"
             TEST_APK="$(find app/build/outputs/apk -name '*androidTest*.apk' | head -n1)"
             [ -n "${APP_APK}" ] || { echo "::error::no app APK produced"; exit 1; }
             [ -n "${TEST_APK}" ] || { echo "::error::no androidTest APK produced"; exit 1; }
             adb install -r "${APP_APK}"
             adb install -r "${TEST_APK}"
-            set +e
             adb shell am instrument -w \
               tech.khalidrafi.emacshell.termux.test/androidx.test.runner.AndroidJUnitRunner \
-              | tee instrumentation.log
-            RC="${PIPESTATUS[0]}"
-            set -e
+              > instrumentation.log 2>&1
+            RC=$?
             adb logcat -d > emacshell-logcat.txt || true
+            cat instrumentation.log
             echo "instrument exit code: ${RC}"
             exit "${RC}"
 
