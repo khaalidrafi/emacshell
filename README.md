@@ -257,6 +257,40 @@ on purpose: the official Termux bootstrap is compiled for
 `/data/data/com.termux` and would install a shell that cannot run.
 See `pins/bootstrap-README.md` and BUILD.org for the full story.
 
+## Emulator tests — running and using the app under emulation
+
+`app/src/androidTest` holds an instrumented smoke suite
+(`EmacshellSmokeTest`) that runs INSIDE the app's own process on an
+emulator or device, so it exercises the exact UID, SELinux domain and
+file layout users get. One test per user-visible capability:
+
+| Test | Answers |
+|---|---|
+| `emacsServiceComesUpAndStaysUp` | Does the app launch, stay out of crash state, and does the native Emacs thread (`EmacsService`) come up? |
+| `bootstrapInstallsBash` | Does the first-boot bootstrap extract `files/usr/bin/bash`? |
+| `execBashFromAppData` | Can the app exec() a binary from its data directory? (The W^X question: emacshell targets API 28, so this must pass on every Android version.) |
+| `coreutilsAreExecutableFromThePrefix` | Same, through `uname -m` (must print `aarch64`). |
+| `initFilesInstalledWithExecPathWiring` | Did `early-init.el`/`init.el` land with the `exec-path` wiring? |
+| `usageBridgeAnswersPing` | Does the token-gated loopback usage bridge accept `PING` with the per-boot secret? |
+
+Run it on any booted emulator/device (arm64 — the APK is arm64-only):
+
+```sh
+scripts/extract-gnu-apk.sh 29 arm64-v8a
+./gradlew assembleTermuxDebug assembleTermuxDebugAndroidTest
+./gradlew connectedTermuxDebugAndroidTest
+```
+
+CI runs the whole lane automatically: the `emulator` workflow builds
+the termux debug APK + androidTest APK on Linux, boots an API 30
+arm64-v8a emulator on the Apple Silicon runner (arm64 system images
+for emulators start at API 30; the exec/SELinux rules under test key
+on the app's targetSdk, not the OS image version), installs both
+APKs, runs `am instrument`, and always uploads `logcat` +
+`instrumentation.log` as artifacts. When a user reports a crash on
+their device, reproduce and diagnose here first — the artifacts hold
+the crash trace.
+
 ## Repository layout
 
 | Path | What |

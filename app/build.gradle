@@ -85,6 +85,12 @@ android {
         manifestPlaceholders.TERMUX_PACKAGE_NAME = applicationId
         manifestPlaceholders.EMACSHELL_APPLICATION_ID = applicationId
 
+        // Instrumented smoke tests (app/src/androidTest): they run in
+        // this app's own process on an emulator, asserting launch,
+        // bootstrap extraction, exec() of bootstrap binaries, init
+        // files and the usage bridge.  See EmacshellSmokeTest.
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+
         externalNativeBuild {
             ndkBuild {
                 cFlags '-std=c11', '-Wall', '-Wextra', '-Werror', '-Os',
@@ -388,4 +394,9 @@ dependencies {
     // GNU Emacs Android layer (activities, service, provider, patched
     // Java sources, prebuilt native libraries and assets).
     implementation project(':emacs')
+
+    // Instrumented test stack (androidTest only; no runtime weight).
+    androidTestImplementation 'androidx.test:runner:1.5.2'
+    androidTestImplementation 'androidx.test:rules:1.5.0'
+    androidTestImplementation 'androidx.test.ext:junit:1.1.5'
 }

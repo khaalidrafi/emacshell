@@ -1,0 +1,203 @@
+# Emulator workflow: run the app on a real Android emulator and use it.
+#
+# Motivation (2026-11-23): "Emacshell termux API 29 didn't even run and
+# immediately crash on my device. Please write tests that cover running
+# and using the app via emulation."  The instrumented suite in
+# app/src/androidTest runs INSIDE the app's own process on the emulator,
+# so a crash at launch, a failed bootstrap extraction, a refused exec()
+# of a bootstrap binary, or a dead usage bridge all surface as RED
+# TESTS with a full logcat artifact -- instead of a silent device crash.
+#
+# Two jobs:
+#   build-debug (ubuntu): assemble the termux DEBUG APK + its androidTest
+#     APK (arm64-v8a, GNU api-29 pin, custom-prefix bootstrap artifact
+#     pulled from the last successful `bootstrap` run).
+#   emulator-test (macos arm64): boot an API 30 arm64-v8a emulator
+#     (Apple Silicon runners have no KVM/x86 images; arm64 images start
+#     at API 30), install both APKs, `am instrument` the suite, and
+#     always upload logcat + the instrumentation log.
+#
+# Trigger: manual dispatch, plus pushes that touch the test suite, the
+# app build file or this workflow -- the emulator lane must not burn
+# macOS minutes on every docs typo.
+
+name: emulator
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ai/main, main]
+    paths:
+      - 'app/build.gradle'
+      - 'app/src/androidTest/**'
+      - '.github/workflows/emulator.yml'
+
+permissions:
+  actions: read   # download the bootstrap artifact of another run
+  contents: read
+
+env:
+  GNU_MIRROR: https://mirrors.kernel.org/gnu/emacs/android
+
+jobs:
+  build-debug:
+    name: assemble termux debug + androidTest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install SDK components (preinstalled SDK, gaps only)
+        run: |
+          set -euxo pipefail
+          echo "ANDROID_HOME=${ANDROID_HOME}"
+          install=""
+          [ -d "${ANDROID_HOME}/platforms/android-35" ] \
+            || install="${install} platforms;android-35"
+          [ -d "${ANDROID_HOME}/build-tools/35.0.0" ] \
+            || install="${install} build-tools;35.0.0"
+          [ -d "${ANDROID_HOME}/ndk/27.0.12077973" ] \
+            || install="${install} ndk;27.0.12077973"
+          [ -d "${ANDROID_HOME}/platform-tools" ] \
+            || install="${install} platform-tools"
+          if [ -z "${install}" ]; then
+            echo "all pinned SDK components are preinstalled; sdkmanager not needed"
+            exit 0
+          fi
+          echo "missing:${install}"
+          sdkm="$(ls -1 "${ANDROID_HOME}"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | sort -V | tail -n1 || true)"
+          if [ -z "${sdkm}" ]; then
+            echo "::error::components missing (${install}) but no sdkmanager under ${ANDROID_HOME}/cmdline-tools"
+            exit 1
+          fi
+          yes | "${sdkm}" --licenses > /dev/null || true
+          # shellcheck disable=SC2086
+          "${sdkm}" --install ${install}
+
+      - name: Verify the GNU Emacs APK signature (supply chain)
+        run: |
+          set -euxo pipefail
+          mkdir -p build/downloads
+          apk="build/downloads/emacs-31.1-29-arm64-v8a.apk"
+          curl -fSL --retry 3 -o "${apk}" \
+            "${GNU_MIRROR}/emacs-31.1-29-arm64-v8a.apk"
+          curl -fSL --retry 3 -o "${apk}.sig" \
+            "${GNU_MIRROR}/emacs-31.1-29-arm64-v8a.apk.sig"
+          if ! gpg --import keys/emacs-release-key.asc; then
+            echo "::warning::committed key failed to import; fetching from ftp.gnu.org"
+            curl -fSL --retry 3 \
+              https://ftp.gnu.org/gnu/emacs/emacs-release-key.asc | gpg --import
+          fi
+          gpg --verify "${apk}.sig" "${apk}"
+
+      - name: Unpack the GNU APK (sha256-pinned)
+        run: scripts/extract-gnu-apk.sh 29 arm64-v8a
+
+      - name: Fetch the custom-prefix bootstrap artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          run_id="$(gh run list --workflow=bootstrap.yml \
+            --status=success --limit 1 --json databaseId \
+            --jq '.[0].databaseId')"
+          if [ -z "${run_id}" ]; then
+            echo "::error::no successful 'bootstrap' workflow run found. Dispatch the bootstrap workflow once (it builds the custom-prefix bootstraps), then re-run this workflow."
+            exit 1
+          fi
+          echo "using bootstrap run ${run_id}"
+          gh run download "${run_id}" --name bootstrap-termux \
+            --dir bootstrap/termux --repo "${GITHUB_REPOSITORY}"
+          ls -l bootstrap/termux/
+
+      - name: Assemble the debug APK and its androidTest APK
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew --no-daemon --stacktrace -PgnuApkApi=29 \
+            assembleTermuxDebug assembleTermuxDebugAndroidTest
+
+      - name: Upload app debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: emacshell-termux-debug-apk
+          path: app/build/outputs/apk/termux/debug/*.apk
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload androidTest APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: emacshell-termux-androidtest-apk
+          path: app/build/outputs/apk/androidTest/termux/debug/*.apk
+          if-no-files-found: error
+          retention-days: 7
+
+  emulator-test:
+    name: emulator (API 30 arm64, run + use the app)
+    needs: build-debug
+    runs-on: macos-14
+    timeout-minutes: 45
+    steps:
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Download the app debug APK
+        uses: actions/download-artifact@v4
+        with:
+          name: emacshell-termux-debug-apk
+          path: apks
+
+      - name: Download the androidTest APK
+        uses: actions/download-artifact@v4
+        with:
+          name: emacshell-termux-androidtest-apk
+          path: apks-test
+
+      - name: Boot the emulator and run the smoke suite
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          target: google_apis
+          arch: arm64-v8a
+          disable-animations: true
+          emulator-options: >-
+            -no-window -gpu swiftshader_indirect -noaudio
+            -no-boot-anim -no-snapshot -camera-back none -camera-front none
+          script: |
+            set -euxo pipefail
+            APP_APK="$(find apks -name '*.apk' | head -n1)"
+            TEST_APK="$(find apks-test -name '*.apk' | head -n1)"
+            [ -n "${APP_APK}" ] || { echo "::error::no app APK artifact"; exit 1; }
+            [ -n "${TEST_APK}" ] || { echo "::error::no androidTest APK artifact"; exit 1; }
+            adb install -r "${APP_APK}"
+            adb install -r "${TEST_APK}"
+            set +e
+            adb shell am instrument -w \
+              tech.khalidrafi.emacshell.termux.test/androidx.test.runner.AndroidJUnitRunner \
+              | tee instrumentation.log
+            RC="${PIPESTATUS[0]}"
+            set -e
+            adb logcat -d > emacshell-logcat.txt || true
+            echo "instrument exit code: ${RC}"
+            exit "${RC}"
+
+      - name: Upload instrumentation log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: emulator-instrumentation-log
+          path: |
+            instrumentation.log
+            emacshell-logcat.txt
+          if-no-files-found: ignore
+          retention-days: 14
