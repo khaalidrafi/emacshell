@@ -36,6 +36,8 @@ on:
       - 'emacs/build.gradle'
       - 'app/src/androidTest/**'
       - 'scripts/emulator-smoke.sh'
+      - 'scripts/extract-gnu-apk.sh'
+      - 'scripts/gen-emacs-config.py'
       - '.github/workflows/emulator.yml'
 
 permissions:

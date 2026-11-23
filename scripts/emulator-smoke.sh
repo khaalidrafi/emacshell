@@ -24,7 +24,13 @@ adb install -r "${APP_APK}"
 adb install -r "${TEST_APK}"
 
 # am instrument -w streams until the suite finishes; capture the log
-# for the artifact upload and let the exit code speak for the verdict.
+# for the artifact upload.  Its exit code ALONE is not a verdict:
+# run 45253125133 proved `am instrument -w` can exit 0 after the app
+# process crashed before any test ran ("Process crashed before
+# executing the test(s)", INSTRUMENTATION_CODE: 0) -- a false green
+# that hid the launch crash for a whole run.  So the log itself is
+# checked: a crash marker fails the suite, and a successful ERT-style
+# "OK (N tests)" line is REQUIRED for a pass.
 adb shell am instrument -w \
   tech.khalidrafi.emacshell.termux.test/androidx.test.runner.AndroidJUnitRunner \
   > instrumentation.log 2>&1
@@ -35,4 +41,13 @@ adb logcat -d > emacshell-logcat.txt || true
 
 cat instrumentation.log
 echo "instrument exit code: ${RC}"
+
+if grep -q 'Process crashed' instrumentation.log; then
+  echo "::error::the app process crashed before/during the tests (see logcat artifact)"
+  exit 1
+fi
+if ! grep -q 'OK ([0-9]* test' instrumentation.log; then
+  echo "::error::no successful test-run summary in instrumentation.log; treating as failure"
+  exit 1
+fi
 exit "${RC}"
