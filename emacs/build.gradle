@@ -27,6 +27,17 @@ android {
     defaultConfig {
         minSdk project.properties.minSdkVersion.toInteger()
         consumerProguardFiles 'consumer-rules.pro'
+        // The documents-provider authority in this module's manifest
+        // is ${EMACSHELL_APPLICATION_ID}; the consuming app supplies
+        // the real applicationId at ITS manifest merge.  When AGP also
+        // processes THIS module's own androidTest variant (it runs
+        // when the app's androidTest APK is assembled), there is no
+        // app merge to substitute it, so a default is required for
+        // processTermuxDebugAndroidTestManifest to complete.  The
+        // shipped APKs are unaffected: their merge always uses the
+        // app's placeholder values.
+        manifestPlaceholders.EMACSHELL_APPLICATION_ID =
+                project.properties.applicationIdTermux
     }
 
     // The flavors exist ONLY to compile a per-flavor BuildConfig constant
