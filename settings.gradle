@@ -12,10 +12,13 @@
 // byte-for-byte mirror of Maven Central), it is consulted FIRST so the
 // canonical repository remains a pure fallback; local builds never set
 // the variable and keep resolving from mavenCentral() directly.
-def mavenCentralMirror = System.getenv('MAVEN_CENTRAL_MIRROR')
+// NOTE: pluginManagement {} must be the FIRST block of a settings script
+// (Gradle hard rule -- run 45241700042 died on a top-level def before
+// it), so the env var is read INSIDE each repositories block.
 
 pluginManagement {
     repositories {
+        def mavenCentralMirror = System.getenv('MAVEN_CENTRAL_MIRROR')
         if (mavenCentralMirror) maven { url mavenCentralMirror }
         google()
         mavenCentral()
@@ -26,6 +29,7 @@ pluginManagement {
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
+        def mavenCentralMirror = System.getenv('MAVEN_CENTRAL_MIRROR')
         if (mavenCentralMirror) maven { url mavenCentralMirror }
         google()
         mavenCentral()
