@@ -28,6 +28,7 @@ Writes bindings.json, the same table the Android picker maintains." t)
 (autoload 'elwidget-org-register-widgets "elwidget-org" "\
 Define all built-in Org widgets." t)
 (register-definition-prefixes "elwidget-org" '("elwidget-org-"))
+
 
 ;;; End of scraped data
 

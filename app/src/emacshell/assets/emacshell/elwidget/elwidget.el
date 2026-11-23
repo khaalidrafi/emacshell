@@ -2,7 +2,7 @@
 
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;; Author: GLM 5.3 <glm-5.3@z.ai>
-;; Version: 0.1.0
+;; Version: 0.2.0
 ;; Package-Requires: ((emacs "27.1"))
 ;; Keywords: widgets, android, tools
 
@@ -36,6 +36,10 @@
 ;;           STATE is t (checked), off, skip or q; big tap target
 ;;   (:button "Label" :action "..." :arg "...")
 ;;   (:progress :value 3 :max 8 :label "3/8" :color "#RRGGBB")
+;;           progress bar; :action/:arg make the bar itself a tap
+;;           target and :fmt "{v}/{m} ..." a label template the
+;;           Android side re-renders from the shadow state, so
+;;           "inc"/"dec" stepper taps move the number instantly
 ;;   (:bar :height 2 :color "#RRGGBB")    thin colored rule
 ;;   (:gap :height 8)
 ;;
@@ -259,17 +263,34 @@ Redefinition re-renders immediately."
       (arg . ,(elwidget--action-arg rest)))))
 
 (defun elwidget--progress-node (node)
-  "Render (:progress ...) NODE."
+  "Render (:progress ...) NODE.
+Optional :action + :arg make the bar itself tappable (the obvious
+use is action \"inc\" -- tap the bar to add one step); :fmt is a
+label template containing {v} (live value) and {m} (max) that the
+Android side re-renders from the shadow state, so inc/dec taps move
+the displayed number even while Emacs is frozen in the background."
   (let* ((rest (cdr node))
          (value (plist-get rest :value))
-         (max (plist-get rest :max)))
+         (max (plist-get rest :max))
+         (fmt (plist-get rest :fmt))
+         (action (plist-get rest :action)))
     (unless (and (numberp value) (numberp max))
       (error "elwidget: :progress needs :value and :max numbers"))
+    (when fmt
+      (unless (and (stringp fmt) (string-match-p "{v}" fmt))
+        (error "elwidget: :progress :fmt must be a string containing {v}")))
+    (when action
+      ;; Validates: string (or 'open, mapped to "open").
+      (elwidget--action rest))
     `((type . "progress")
       (value . ,value)
       (max . ,max)
       ,@(elwidget--opt rest :label 'string)
-      ,@(elwidget--opt rest :color 'string))))
+      ,@(elwidget--opt rest :fmt 'string)
+      ,@(elwidget--opt rest :color 'string)
+      ,@(when action `((action . ,(elwidget--action rest))))
+      ,@(when (plist-get rest :arg)
+          `((arg . ,(elwidget--action-arg rest)))))))
 
 (defun elwidget--bar-node (node)
   "Render (:bar ...) NODE."

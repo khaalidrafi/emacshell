@@ -157,6 +157,41 @@ public final class ElwidgetFiles {
         return next;
     }
 
+    /**
+     * Bump the numeric shadow value for ARG by DELTA (floored at
+     * zero), the stepper counterpart of {@link #flipState(String)}:
+     * "inc"/"dec" taps move the displayed number the instant the
+     * user taps, while Emacs is still frozen in the background.  A
+     * missing or non-numeric entry counts as zero; the next Emacs
+     * sync writes the authoritative value again.
+     */
+    public Object bumpState(String arg, int delta) {
+        JSONObject root = readJSONObject(stateFile());
+        if (root == null)
+            root = new JSONObject();
+        double value = 0;
+        Object current = root.opt(arg);
+        if (current instanceof Number)
+            value = ((Number) current).doubleValue();
+        else if (current instanceof String)
+            try {
+                value = Double.parseDouble((String) current);
+            } catch (NumberFormatException ignored) {
+            }
+        value = Math.max(0, value + delta);
+        Object next = (value == Math.rint(value) && !Double.isInfinite(value))
+                ? (Object) Long.valueOf((long) value)
+                : (Object) Double.valueOf(value);
+        try {
+            root.put(arg, next);
+        } catch (Exception e) {
+            Log.w(TAG, "bumpState: " + e.getMessage());
+            return next;
+        }
+        writeJSONObject(root, stateFile());
+        return next;
+    }
+
     /** Last event id Emacs drained (cursor.json), or 0. */
     public long readCursor() {
         JSONObject root = readJSONObject(cursorFile());

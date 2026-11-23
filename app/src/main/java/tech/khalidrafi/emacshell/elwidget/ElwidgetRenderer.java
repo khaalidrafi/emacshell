@@ -195,8 +195,24 @@ final class ElwidgetRenderer {
         RemoteViews rv = new RemoteViews(pkg, R.layout.elwidget_node_progress);
         int max = Math.max(1, node.optInt("max", 1));
         int value = node.optInt("value", 0);
-        rv.setProgressBar(R.id.elwidget_progress, max, value, false);
         String label = node.optString("label", "");
+        // Stepper bars carry an arg into the shadow state: its numeric
+        // value is the LIVE value (the provider bumps it on inc/dec
+        // taps), and "fmt" is a {v}/{m} label template -- so the bar
+        // and its number move the instant the user taps, while Emacs
+        // is still frozen in the background.
+        String arg = node.optString("arg", "");
+        if (!arg.isEmpty()) {
+            Number live = asNumber(state.get(arg));
+            if (live != null) {
+                value = Math.max(0, (int) Math.floor(live.doubleValue()));
+                String fmt = node.optString("fmt", "");
+                if (!fmt.isEmpty())
+                    label = fmt.replace("{v}", numberText(live))
+                               .replace("{m}", String.valueOf(max));
+            }
+        }
+        rv.setProgressBar(R.id.elwidget_progress, max, value, false);
         try {
             rv.setTextViewText(R.id.elwidget_label, label);
         } catch (Exception ignored) {
@@ -206,7 +222,34 @@ final class ElwidgetRenderer {
         rv.setInt(R.id.elwidget_label, "setVisibility",
                 label.isEmpty() ? android.view.View.GONE
                         : android.view.View.VISIBLE);
+        // The bar itself is a tap target when the spec gives it an
+        // action ("inc": tap the bar to add one step).
+        String action = node.optString("action", "");
+        if (!action.isEmpty() && !arg.isEmpty())
+            rv.setOnClickPendingIntent(R.id.elwidget_progress_root,
+                    tapPI(action, arg));
         return rv;
+    }
+
+    /** A JSON value as a Number, or null (booleans/objects are not). */
+    private static Number asNumber(Object value) {
+        if (value instanceof Number)
+            return (Number) value;
+        if (value instanceof String)
+            try {
+                return Double.parseDouble((String) value);
+            } catch (NumberFormatException ignored) {
+            }
+        return null;
+    }
+
+    /** Number formatted the way Emacs prints habit values (5, not 5.0). */
+    private static String numberText(Number n) {
+        double d = n.doubleValue();
+        if (d == Math.rint(d) && !Double.isInfinite(d)
+                && Math.abs(d) < 1e15)
+            return String.valueOf((long) d);
+        return String.valueOf(d);
     }
 
     private RemoteViews barNode(JSONObject node) {

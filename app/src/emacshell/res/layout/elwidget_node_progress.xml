@@ -1,7 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Progress node: horizontal ProgressBar plus an optional label
-     (hidden when the spec has no :label). -->
+     (hidden when the spec has no :label).  The root is clickable
+     when the spec gives the node an :action + :arg ("inc": tap the
+     bar to add one step). -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/elwidget_progress_root"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"

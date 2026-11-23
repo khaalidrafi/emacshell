@@ -173,16 +173,21 @@ The basic Org operations work right from the home screen:
 - **`org-tasks`** — basic Org tasks: tap a check to cycle the entry's
   TODO state (`org-todo`).
 - **`org-habits`** — habit updating: tap to check a habit; with the
-  personal `loophabits` package it flips instantly, otherwise Org's
-  own `STYLE=habit` entries render and "done today" comes from the
+  personal `loophabits` package habits become fully updatable from
+  the home screen — checks tick instantly, and measurable habits
+  (pages read, glasses of water, ...) get **-** and **+** steppers
+  plus a tappable bar (+1) whose number moves the moment you tap
+  (`loophabits-progress` spec; one tap is
+  `loophabits-widget-step`). Without loophabits, Org's own
+  `STYLE=habit` entries render and "done today" comes from the
   consistency graph's logbook reading.
 
-On Android 12+ each node (check, button) is its own tap target; on
-Android 9–11 the widget renders identically but the whole surface is a
-single open-Emacs tap (`RemoteViews.addView` does not exist there).
-Check marks flip instantly via the shadow state file; Emacs is
-authoritative again on the next sync (the first-boot `init.el` wires
-`focus-in-hook` + a 15 s poller).
+On Android 12+ each node (check, button, progress bar) is its own tap
+target; on Android 9–11 the widget renders identically but the whole
+surface is a single open-Emacs tap (`RemoteViews.addView` does not
+exist there). Check marks flip and stepper numbers bump instantly via
+the shadow state file; Emacs is authoritative again on the next sync
+(the first-boot `init.el` wires `focus-in-hook` + a 15 s poller).
 
 ## org-activity — native Usage Access (the usage bridge)
 

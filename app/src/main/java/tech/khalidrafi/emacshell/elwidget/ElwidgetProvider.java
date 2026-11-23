@@ -99,8 +99,18 @@ public class ElwidgetProvider extends AppWidgetProvider {
             return;
         ElwidgetFiles files = new ElwidgetFiles(context);
         files.appendEvent(spec, action, arg);
-        if ("toggle".equals(action) && arg != null && !arg.isEmpty())
+        if (arg == null || arg.isEmpty())
+            return;
+        // Instant feedback while Emacs is frozen in the background:
+        // toggles flip the check 0<->1, stepper taps bump the numeric
+        // state by one (floored at zero).  The queued event makes the
+        // Emacs side authoritative on the next sync.
+        if ("toggle".equals(action))
             files.flipState(arg);
+        else if ("inc".equals(action))
+            files.bumpState(arg, 1);
+        else if ("dec".equals(action))
+            files.bumpState(arg, -1);
         renderAll(context, AppWidgetManager.getInstance(context));
     }
 
