@@ -43,6 +43,10 @@ permissions:
 
 env:
   GNU_MIRROR: https://mirrors.kernel.org/gnu/emacs/android
+  # Google's byte-for-byte mirror of Maven Central: repo.maven.apache.org
+  # 429s the shared runner IPs (run 45194666000).  settings.gradle puts
+  # this ahead of mavenCentral() as the primary resolve source.
+  MAVEN_CENTRAL_MIRROR: https://maven-central.storage-download.googleapis.com/maven2
 
 jobs:
   emulator:
@@ -141,11 +145,12 @@ jobs:
         run: |
           set -euo pipefail
           chmod +x gradlew
-          # Maven Central 429s are transient and IP-dependent (run
-          # 45194666000 died mid-resolve on kotlin-stdlib-jdk8 +
-          # httpmime poms).  Gradle has no --retry-all-errors, so retry
-          # the whole invocation; --no-daemon keeps attempts clean and
-          # the daemon's dependency cache makes later ones cheap.
+          # Belt and suspenders on top of MAVEN_CENTRAL_MIRROR: the
+          # mirror removes the repo.maven.apache.org 429s that killed run
+          # 45194666000, but any other transient resolution failure still
+          # gets a retry.  Gradle has no --retry-all-errors; --no-daemon
+          # keeps attempts clean and the daemon's dependency cache makes
+          # later ones cheap.
           n=0
           until [ "$n" -ge 3 ]; do
             if ./gradlew --no-daemon --stacktrace -PgnuApkApi=29 \

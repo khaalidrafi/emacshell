@@ -34,6 +34,10 @@ env:
   # GNU mirror serving /gnu/emacs/android/ (official mirror list:
   # https://www.gnu.org/prep/ftp.html).  Overridable for forks.
   GNU_MIRROR: https://mirrors.kernel.org/gnu/emacs/android
+  # Google's byte-for-byte mirror of Maven Central: repo.maven.apache.org
+  # 429s the shared runner IPs (run 45194666000).  settings.gradle puts
+  # this ahead of mavenCentral() as the primary resolve source.
+  MAVEN_CENTRAL_MIRROR: https://maven-central.storage-download.googleapis.com/maven2
 
 jobs:
   verify:

@@ -5,8 +5,18 @@
 // this modern build instead (termux-app master has itself since moved to
 // AGP 8.x, which validates that the sources build under it).
 
+// CI-only Maven Central mirror.  repo.maven.apache.org rate-limits the
+// shared IP pools of GitHub-hosted runners (429 Too Many Requests), which
+// killed runs 45194666000 despite three whole-invocation retries.  When
+// MAVEN_CENTRAL_MIRROR is set (the CI workflows set it to Google's
+// byte-for-byte mirror of Maven Central), it is consulted FIRST so the
+// canonical repository remains a pure fallback; local builds never set
+// the variable and keep resolving from mavenCentral() directly.
+def mavenCentralMirror = System.getenv('MAVEN_CENTRAL_MIRROR')
+
 pluginManagement {
     repositories {
+        if (mavenCentralMirror) maven { url mavenCentralMirror }
         google()
         mavenCentral()
         gradlePluginPortal()
@@ -16,6 +26,7 @@ pluginManagement {
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
+        if (mavenCentralMirror) maven { url mavenCentralMirror }
         google()
         mavenCentral()
         // Termux module dependencies (markwon et al.) all resolve from
