@@ -113,7 +113,14 @@ def main():
     if not libs:
         raise SystemExit('error: no ELF .so libraries under %s' % jni_dir)
     order = compute_order(libs)
-    entries = ', '.join('"%s"' % n for n in order)
+    # EmacsNative's static block strips a leading "lib" from each entry
+    # and hands the rest to System.loadLibrary, which itself appends
+    # ".so" (and re-adds "lib") when resolving.  GNU's own EmacsConfig
+    # therefore carries BARE names ("android-emacs", not
+    # "libandroid-emacs.so"): emitting filenames here made every launch
+    # die with UnsatisfiedLinkError: dlopen "libandroid-emacs.so.so"
+    # (emulator run 45253125133, the Owner's api29 crash).
+    entries = ', '.join('"%s"' % n[:-3] for n in order)
     content = (
         'package org.gnu.emacs;\n'
         '\n'
@@ -139,7 +146,7 @@ def main():
         unresolved.update(d for d in deps if d not in libs)
     print('EmacsConfig.java: %d app libraries; system deps skipped: %s'
           % (len(order), ', '.join(sorted(unresolved)) or 'none'))
-    print('order: %s' % ', '.join(order))
+    print('order: %s' % ', '.join(n[:-3] for n in order))
 
 
 if __name__ == '__main__':
