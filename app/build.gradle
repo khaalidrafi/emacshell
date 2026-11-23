@@ -74,8 +74,8 @@ android {
         targetSdk project.properties.targetSdkVersion.toInteger()
         // Per-api versionCodes keep updates monotonic within a variant
         // and let a 9->10 OS upgrade switch variants cleanly (29xx > 21xx).
-        versionCode gnuApkApi * 100 + 4
-        versionName '0.1.3'
+        versionCode gnuApkApi * 100 + 5
+        versionName '0.1.4'
 
         // Consumed by the vendored termux manifest (permission, provider
         // and receiver names) and by the :emacs library manifest
