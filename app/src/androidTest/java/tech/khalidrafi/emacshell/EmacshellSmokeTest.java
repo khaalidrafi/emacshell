@@ -96,13 +96,22 @@ public class EmacshellSmokeTest {
     }
 
     /**
-     * Launch EmacsActivity (the single launcher of both flavors) and
-     * wait for it to reach RESUMED.  The first resume also triggers
-     * the first-boot bootstrap extraction via
-     * EmacshellApplication.onActivityResumed().
+     * Launch EmacsActivity (the single launcher of both flavors).
+     * The first resume also triggers the first-boot bootstrap
+     * extraction via EmacshellApplication.onActivityResumed().
+     *
+     * Deliberately NOT Instrumentation.startActivitySync: androidx's
+     * MonitoringInstrumentation FINISHES activities it started that
+     * way when a test ends ("MonitoringInstr: Finishing activity"),
+     * and GNU Emacs kills the whole process when its last frame
+     * closes -- which took the instrumentation process down with it
+     * between tests (run 45269604538: clean exit 0 right after
+     * "Finishing activity: org.gnu.emacs.EmacsActivity").  A plain
+     * context.startActivity keeps the activity untracked, so it
+     * survives for the whole suite like it does for a real user.
      */
     @Before
-    public void launchMainActivity() {
+    public void launchMainActivity() throws Exception {
         if (sLaunched)
             return;
         Context ctx = target();
@@ -110,10 +119,10 @@ public class EmacshellSmokeTest {
         Intent launcher = pm.getLaunchIntentForPackage(ctx.getPackageName());
         assertNotNull("launcher intent for own package must resolve", launcher);
         launcher.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        Activity activity = InstrumentationRegistry.getInstrumentation()
-                .startActivitySync(launcher);
-        assertNotNull("EmacsActivity did not start", activity);
-        assertFalse("EmacsActivity finished immediately", activity.isFinishing());
+        ctx.startActivity(launcher);
+        // Give the activity a moment to come up; the assertions below
+        // all wait on real signals (files, services), not on this.
+        Thread.sleep(2000);
         sLaunched = true;
     }
 
