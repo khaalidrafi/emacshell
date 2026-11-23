@@ -12,11 +12,14 @@
 # see app/build.gradle), and hosted macOS runners cannot run emulators
 # (no hypervisor: android-emulator-runner issue #458; both attempts on
 # 2026-11-23 were cancelled before any step ran).  GitHub Linux runners
-# have KVM, and API 35 google_apis x86_64 system images carry ABI
-# translation, so arm64-v8a apps run transparently on an x86_64
-# emulator (the same issue documents exactly this config as THE way to
-# run ARM-only apps on GitHub Actions).  The exec/SELinux rules under
-# test key on the app's targetSdk, not the image version.
+# have KVM, but the runner user is NOT in the kvm group -- without the
+# udev rule below the action silently falls back to -accel off, which
+# emulator 37.x refuses outright (run 45188039210).  With the rule, the
+# API 35 google_apis x86_64 image boots under KVM and its ABI
+# translation runs the arm64-v8a app transparently (the same issue
+# documents exactly this config as THE way to run ARM-only apps on
+# GitHub Actions).  The exec/SELinux rules under test key on the app's
+# targetSdk, not the image version.
 #
 # Trigger: manual dispatch, plus pushes that touch the test suite, the
 # app build file, the :emacs module or this workflow -- the emulator
@@ -54,6 +57,22 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+
+      # Hosted ubuntu runners ship /dev/kvm with restrictive permissions
+      # (the runner user is not in the kvm group).  Without this rule the
+      # emulator-runner action logs "Disabling Linux hardware
+      # acceleration" and launches with -accel off, which emulator 37.x
+      # refuses (run 45188039210: "Software CPU emulation (-accel off)
+      # is not supported").  This is the udev rule from the action's own
+      # README; after it, the x86_64 image boots under KVM and the
+      # arm64-v8a APK rides the image's ABI translation.
+      - name: Enable KVM (runner user -> kvm group perms)
+        if: runner.os == 'Linux'
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
 
       - name: Install SDK components (preinstalled SDK, gaps only)
         run: |
