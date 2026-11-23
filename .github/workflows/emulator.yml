@@ -35,6 +35,7 @@ on:
       - 'app/build.gradle'
       - 'emacs/build.gradle'
       - 'app/src/androidTest/**'
+      - 'scripts/emulator-smoke.sh'
       - '.github/workflows/emulator.yml'
 
 permissions:
@@ -181,25 +182,13 @@ jobs:
             -no-snapshot-load -no-snapshot-save -no-window
             -gpu swiftshader_indirect -noaudio -no-boot-anim
             -camera-back none -camera-front none
-          script: |
-            # POSIX sh (dash): the action runs this via /usr/bin/sh, so no
-            # `set -o pipefail` and no PIPESTATUS -- redirect + $? instead
-            # (run 45193434006 died on exactly that).
-            set -eux
-            APP_APK="$(find app/build/outputs/apk -name '*.apk' ! -name '*androidTest*' | head -n1)"
-            TEST_APK="$(find app/build/outputs/apk -name '*androidTest*.apk' | head -n1)"
-            [ -n "${APP_APK}" ] || { echo "::error::no app APK produced"; exit 1; }
-            [ -n "${TEST_APK}" ] || { echo "::error::no androidTest APK produced"; exit 1; }
-            adb install -r "${APP_APK}"
-            adb install -r "${TEST_APK}"
-            adb shell am instrument -w \
-              tech.khalidrafi.emacshell.termux.test/androidx.test.runner.AndroidJUnitRunner \
-              > instrumentation.log 2>&1
-            RC=$?
-            adb logcat -d > emacshell-logcat.txt || true
-            cat instrumentation.log
-            echo "instrument exit code: ${RC}"
-            exit "${RC}"
+          # ONE line, on purpose: the action's parseScript() executes
+          # every line of `script:` as its own `sh -c` process, so a
+          # multi-line inline script loses all shell state between
+          # lines (run 45244076439: APP_APK empty on its check line ->
+          # "no app APK produced" right after BUILD SUCCESSFUL).  The
+          # whole suite lives in the committed POSIX script below.
+          script: sh scripts/emulator-smoke.sh
 
       - name: Upload instrumentation log
         if: always()
