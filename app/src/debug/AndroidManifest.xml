@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug-only manifest overlay for the emulator smoke lane.
+
+     The API 35 x86_64 emulator image's HWUI/Vulkan-under-SwiftShader
+     rendering stack dies on a race -- FORTIFY: pthread_mutex_lock on
+     a destroyed mutex, SIGABRT in hwuiTask1 (runs 45255178990 and
+     45257062607-class) -- while composing the EmacsActivity window.
+     GNU Emacs does its own software rendering into a bitmap anyway;
+     the window chrome does not need the GPU.  Disabling hardware
+     acceleration on EmacsActivity in DEBUG builds makes the smoke
+     suite run against the legacy software compositor: no GL, no
+     hwuiTask threads, no SwiftShader, no crash.  Release builds are
+     not affected (this overlay lives in the debug source set only).
+
+     The library manifest's EmacsActivity declares no
+     android:hardwareAccelerated attribute, so this overlay ADDS it
+     in the merge -- no tools:replace churn needed. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <activity
+            android:name="org.gnu.emacs.EmacsActivity"
+            android:hardwareAccelerated="false" />
+    </application>
+
+</manifest>

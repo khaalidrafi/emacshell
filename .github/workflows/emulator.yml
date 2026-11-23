@@ -35,6 +35,7 @@ on:
       - 'app/build.gradle'
       - 'emacs/build.gradle'
       - 'app/src/androidTest/**'
+      - 'app/src/debug/**'
       - 'scripts/emulator-smoke.sh'
       - 'scripts/extract-gnu-apk.sh'
       - 'scripts/gen-emacs-config.py'
