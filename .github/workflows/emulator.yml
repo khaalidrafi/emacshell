@@ -114,10 +114,15 @@ jobs:
           set -euxo pipefail
           mkdir -p build/downloads
           apk="build/downloads/emacs-31.1-29-arm64-v8a.apk"
-          curl -fSL --retry 3 -o "${apk}" \
-            "${GNU_MIRROR}/emacs-31.1-29-arm64-v8a.apk"
-          curl -fSL --retry 3 -o "${apk}.sig" \
-            "${GNU_MIRROR}/emacs-31.1-29-arm64-v8a.apk.sig"
+          # --speed-time/-limit: a stalled transfer (run 45276313039
+          # hung 35 s on zero bytes, then "Connection reset by peer")
+          # must fail fast enough for --retry to actually re-fetch it.
+          curl -fSL --retry 5 --retry-all-errors \
+               --connect-timeout 30 --speed-time 60 --speed-limit 1024 \
+               -o "${apk}" "${GNU_MIRROR}/emacs-31.1-29-arm64-v8a.apk"
+          curl -fSL --retry 5 --retry-all-errors \
+               --connect-timeout 30 --speed-time 60 --speed-limit 1024 \
+               -o "${apk}.sig" "${GNU_MIRROR}/emacs-31.1-29-arm64-v8a.apk.sig"
           if ! gpg --import keys/emacs-release-key.asc; then
             echo "::warning::committed key failed to import; fetching from ftp.gnu.org"
             curl -fSL --retry 3 \
