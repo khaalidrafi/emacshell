@@ -185,11 +185,34 @@ public class EmacshellSmokeTest {
     }
 
     /* ------------------------------------------------------------------ */
+    /* The whole suite is ONE test.                                        */
+    /* ------------------------------------------------------------------ */
+
+    /**
+     * The full first-boot smoke suite, in order.  Deliberately a
+     * single @Test: androidx's MonitoringInstrumentation finishes
+     * every activity it saw at each test boundary
+     * ("MonitoringInstr: Finishing activity"), and GNU Emacs kills
+     * the whole process when its last frame closes -- which took the
+     * instrumentation process down between tests (runs 45269604538,
+     * 45274670927: clean exit 0 / SIGABRT in android_debug).  With
+     * one test the teardown only happens after every check passed.
+     */
+    @Test
+    public void fullFirstBootSmokeSuite() throws Exception {
+        checkEmacsServiceComesUpAndStaysUp();
+        checkBootstrapInstallsBash();
+        checkExecBashFromAppData();
+        checkCoreutilsAreExecutableFromThePrefix();
+        checkInitFilesInstalledWithExecPathWiring();
+        checkUsageBridgeAnswersPing();
+    }
+
+    /* ------------------------------------------------------------------ */
     /* 1. The app runs                                                     */
     /* ------------------------------------------------------------------ */
 
-    @Test
-    public void emacsServiceComesUpAndStaysUp() throws Exception {
+    private void checkEmacsServiceComesUpAndStaysUp() throws Exception {
         launchMainActivity();
         long deadline = System.currentTimeMillis() + EMACS_UP_TIMEOUT_MS;
         String svc = null;
@@ -216,8 +239,7 @@ public class EmacshellSmokeTest {
     /* 2. The environment installs itself                                  */
     /* ------------------------------------------------------------------ */
 
-    @Test
-    public void bootstrapInstallsBash() throws Exception {
+    private void checkBootstrapInstallsBash() throws Exception {
         launchMainActivity();
         ensureBootstrap();
         File bash = new File(prefixBin(), "bash");
@@ -231,8 +253,7 @@ public class EmacshellSmokeTest {
     /* 3. Executing binaries (the report that motivated these tests)       */
     /* ------------------------------------------------------------------ */
 
-    @Test
-    public void execBashFromAppData() throws Exception {
+    private void checkExecBashFromAppData() throws Exception {
         launchMainActivity();
         ensureBootstrap();
 
@@ -261,8 +282,7 @@ public class EmacshellSmokeTest {
                 "exec-ok-42", out.toString().trim());
     }
 
-    @Test
-    public void coreutilsAreExecutableFromThePrefix() throws Exception {
+    private void checkCoreutilsAreExecutableFromThePrefix() throws Exception {
         launchMainActivity();
         ensureBootstrap();
 
@@ -292,8 +312,7 @@ public class EmacshellSmokeTest {
     /* 4. The init files Emacs actually loads                              */
     /* ------------------------------------------------------------------ */
 
-    @Test
-    public void initFilesInstalledWithExecPathWiring() throws Exception {
+    private void checkInitFilesInstalledWithExecPathWiring() throws Exception {
         launchMainActivity();
         File earlyInit = new File(emacsD(), "early-init.el");
         File initEl = new File(emacsD(), "init.el");
@@ -325,8 +344,7 @@ public class EmacshellSmokeTest {
     /* 5. The usage bridge (org-activity's Android wire)                   */
     /* ------------------------------------------------------------------ */
 
-    @Test
-    public void usageBridgeAnswersPing() throws Exception {
+    private void checkUsageBridgeAnswersPing() throws Exception {
         launchMainActivity();
 
         File portFile = new File(target().getFilesDir(),
