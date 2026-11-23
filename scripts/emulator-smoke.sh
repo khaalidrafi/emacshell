@@ -23,6 +23,21 @@ TEST_APK="$(find app/build/outputs/apk -name '*androidTest*.apk' | head -n1)"
 adb install -r "${APP_APK}"
 adb install -r "${TEST_APK}"
 
+# Pre-grant the dangerous permissions the merged manifest requests, so
+# no runtime permission dialog can appear over the activity under test
+# (run 45255178990: a GrantPermissionsActivity raced the suite and the
+# HWUI teardown).  pm grant fails for permissions the target SDK makes
+# implicit -- that failure is expected and ignored.
+PKG="tech.khalidrafi.emacshell.termux"
+for perm in android.permission.WRITE_EXTERNAL_STORAGE \
+            android.permission.READ_EXTERNAL_STORAGE \
+            android.permission.POST_NOTIFICATIONS \
+            android.permission.READ_CONTACTS \
+            android.permission.CAMERA \
+            android.permission.RECORD_AUDIO; do
+  adb shell pm grant "${PKG}" "${perm}" 2>/dev/null || true
+done
+
 # am instrument -w streams until the suite finishes; capture the log
 # for the artifact upload.  Its exit code ALONE is not a verdict:
 # run 45253125133 proved `am instrument -w` can exit 0 after the app

@@ -184,6 +184,7 @@ jobs:
             -no-snapshot-load -no-snapshot-save -no-window
             -gpu swiftshader_indirect -noaudio -no-boot-anim
             -camera-back none -camera-front none
+            -feature -Vulkan
           # ONE line, on purpose: the action's parseScript() executes
           # every line of `script:` as its own `sh -c` process, so a
           # multi-line inline script loses all shell state between
