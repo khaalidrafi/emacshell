@@ -141,8 +141,23 @@ jobs:
         run: |
           set -euo pipefail
           chmod +x gradlew
-          ./gradlew --no-daemon --stacktrace -PgnuApkApi=29 \
-            assembleTermuxDebug assembleTermuxDebugAndroidTest
+          # Maven Central 429s are transient and IP-dependent (run
+          # 45194666000 died mid-resolve on kotlin-stdlib-jdk8 +
+          # httpmime poms).  Gradle has no --retry-all-errors, so retry
+          # the whole invocation; --no-daemon keeps attempts clean and
+          # the daemon's dependency cache makes later ones cheap.
+          n=0
+          until [ "$n" -ge 3 ]; do
+            if ./gradlew --no-daemon --stacktrace -PgnuApkApi=29 \
+                 assembleTermuxDebug assembleTermuxDebugAndroidTest; then
+              exit 0
+            fi
+            n=$((n + 1))
+            echo "::warning::gradle assemble attempt ${n} failed; retrying in 60s"
+            sleep 60
+          done
+          echo "::error::gradle assemble failed after 3 attempts"
+          exit 1
 
       - name: Boot the emulator and run the smoke suite
         uses: reactivecircus/android-emulator-runner@v2
