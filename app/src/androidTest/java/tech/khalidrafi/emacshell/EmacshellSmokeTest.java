@@ -293,7 +293,7 @@ public class EmacshellSmokeTest {
     /* ------------------------------------------------------------------ */
 
     @Test
-    public void initFilesInstalledWithExecPathWiring() {
+    public void initFilesInstalledWithExecPathWiring() throws Exception {
         launchMainActivity();
         File earlyInit = new File(emacsD(), "early-init.el");
         File initEl = new File(emacsD(), "init.el");
