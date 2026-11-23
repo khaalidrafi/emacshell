@@ -71,11 +71,13 @@ import java.util.concurrent.TimeUnit;
 @RunWith(AndroidJUnit4.class)
 public class EmacshellSmokeTest {
 
-    /** Hard cap on the first-boot bootstrap extraction (emulator-safe). */
-    private static final long BOOTSTRAP_TIMEOUT_MS = TimeUnit.MINUTES.toMillis(8);
+    /** Hard cap on the first-boot bootstrap extraction (emulator-safe:
+        generous because CI may run under ARM ABI translation). */
+    private static final long BOOTSTRAP_TIMEOUT_MS = TimeUnit.MINUTES.toMillis(15);
 
-    /** How long to wait for the Emacs native thread host to appear. */
-    private static final long EMACS_UP_TIMEOUT_MS = TimeUnit.MINUTES.toMillis(3);
+    /** How long to wait for the Emacs native thread host to appear
+        (generous under ABI translation). */
+    private static final long EMACS_UP_TIMEOUT_MS = TimeUnit.MINUTES.toMillis(6);
 
     private static boolean sLaunched;
     private static boolean sBootstrapDone;
@@ -268,8 +270,13 @@ public class EmacshellSmokeTest {
         }
         int rc = proc.waitFor();
         assertEquals("uname exited non-zero", 0, rc);
-        assertEquals("uname -m must report the arm64 machine",
-                "aarch64", out.toString().trim());
+        // aarch64 on real arm64 devices; x86_64 when the CI emulator
+        // runs the arm64 binaries through kernel-level ABI
+        // translation (uname reports the emulated KERNEL's machine).
+        String machine = out.toString().trim();
+        assertTrue("uname -m must report aarch64 (arm64 device) or "
+                        + "x86_64 (translated emulator), got: " + machine,
+                machine.equals("aarch64") || machine.equals("x86_64"));
     }
 
     /* ------------------------------------------------------------------ */

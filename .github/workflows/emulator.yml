@@ -8,18 +8,19 @@
 # of a bootstrap binary, or a dead usage bridge all surface as RED
 # TESTS with a full logcat artifact -- instead of a silent device crash.
 #
-# Two jobs:
-#   build-debug (ubuntu): assemble the termux DEBUG APK + its androidTest
-#     APK (arm64-v8a, GNU api-29 pin, custom-prefix bootstrap artifact
-#     pulled from the last successful `bootstrap` run).
-#   emulator-test (macos arm64): boot an API 30 arm64-v8a emulator
-#     (Apple Silicon runners have no KVM/x86 images; arm64 images start
-#     at API 30), install both APKs, `am instrument` the suite, and
-#     always upload logcat + the instrumentation log.
+# One job on a Linux runner.  The APK is arm64-v8a-only (by design;
+# see app/build.gradle), and hosted macOS runners cannot run emulators
+# (no hypervisor: android-emulator-runner issue #458; both attempts on
+# 2026-11-23 were cancelled before any step ran).  GitHub Linux runners
+# have KVM, and API 35 google_apis x86_64 system images carry ABI
+# translation, so arm64-v8a apps run transparently on an x86_64
+# emulator (the same issue documents exactly this config as THE way to
+# run ARM-only apps on GitHub Actions).  The exec/SELinux rules under
+# test key on the app's targetSdk, not the image version.
 #
 # Trigger: manual dispatch, plus pushes that touch the test suite, the
-# app build file or this workflow -- the emulator lane must not burn
-# macOS minutes on every docs typo.
+# app build file, the :emacs module or this workflow -- the emulator
+# lane must not burn minutes on every docs typo.
 
 name: emulator
 
@@ -29,6 +30,7 @@ on:
     branches: [ai/main, main]
     paths:
       - 'app/build.gradle'
+      - 'emacs/build.gradle'
       - 'app/src/androidTest/**'
       - '.github/workflows/emulator.yml'
 
@@ -40,10 +42,10 @@ env:
   GNU_MIRROR: https://mirrors.kernel.org/gnu/emacs/android
 
 jobs:
-  build-debug:
-    name: assemble termux debug + androidTest
+  emulator:
+    name: assemble + emulator (API 35 x86_64, ARM translation)
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
 
@@ -123,62 +125,29 @@ jobs:
           ./gradlew --no-daemon --stacktrace -PgnuApkApi=29 \
             assembleTermuxDebug assembleTermuxDebugAndroidTest
 
-      - name: Upload app debug APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: emacshell-termux-debug-apk
-          path: app/build/outputs/apk/termux/debug/*.apk
-          if-no-files-found: error
-          retention-days: 7
-
-      - name: Upload androidTest APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: emacshell-termux-androidtest-apk
-          path: app/build/outputs/apk/androidTest/termux/debug/*.apk
-          if-no-files-found: error
-          retention-days: 7
-
-  emulator-test:
-    name: emulator (API 30 arm64, run + use the app)
-    needs: build-debug
-    runs-on: macos-14
-    timeout-minutes: 45
-    steps:
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Download the app debug APK
-        uses: actions/download-artifact@v4
-        with:
-          name: emacshell-termux-debug-apk
-          path: apks
-
-      - name: Download the androidTest APK
-        uses: actions/download-artifact@v4
-        with:
-          name: emacshell-termux-androidtest-apk
-          path: apks-test
-
       - name: Boot the emulator and run the smoke suite
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 30
+          # API 35 google_apis x86_64: the documented config that runs
+          # arm64-v8a-only APKs on hosted Linux runners via ABI
+          # translation (android-emulator-runner issue #458).  KVM is
+          # available on hosted ubuntu runners.
+          api-level: 35
           target: google_apis
-          arch: arm64-v8a
+          arch: x86_64
+          profile: pixel_5
+          force-avd-creation: false
           disable-animations: true
           emulator-options: >-
-            -no-window -gpu swiftshader_indirect -noaudio
-            -no-boot-anim -no-snapshot -camera-back none -camera-front none
+            -no-snapshot-load -no-snapshot-save -no-window
+            -gpu swiftshader_indirect -noaudio -no-boot-anim
+            -camera-back none -camera-front none
           script: |
             set -euxo pipefail
-            APP_APK="$(find apks -name '*.apk' | head -n1)"
-            TEST_APK="$(find apks-test -name '*.apk' | head -n1)"
-            [ -n "${APP_APK}" ] || { echo "::error::no app APK artifact"; exit 1; }
-            [ -n "${TEST_APK}" ] || { echo "::error::no androidTest APK artifact"; exit 1; }
+            APP_APK="$(find app/build/outputs/apk -name '*.apk' ! -name '*androidTest*' | head -n1)"
+            TEST_APK="$(find app/build/outputs/apk -name '*androidTest*.apk' | head -n1)"
+            [ -n "${APP_APK}" ] || { echo "::error::no app APK produced"; exit 1; }
+            [ -n "${TEST_APK}" ] || { echo "::error::no androidTest APK produced"; exit 1; }
             adb install -r "${APP_APK}"
             adb install -r "${TEST_APK}"
             set +e

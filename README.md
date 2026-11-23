@@ -282,14 +282,21 @@ scripts/extract-gnu-apk.sh 29 arm64-v8a
 ```
 
 CI runs the whole lane automatically: the `emulator` workflow builds
-the termux debug APK + androidTest APK on Linux, boots an API 30
-arm64-v8a emulator on the Apple Silicon runner (arm64 system images
-for emulators start at API 30; the exec/SELinux rules under test key
-on the app's targetSdk, not the OS image version), installs both
-APKs, runs `am instrument`, and always uploads `logcat` +
+the termux debug APK + androidTest APK, boots an emulator, installs
+both APKs, runs `am instrument`, and always uploads `logcat` +
 `instrumentation.log` as artifacts. When a user reports a crash on
 their device, reproduce and diagnose here first — the artifacts hold
 the crash trace.
+
+One detail worth knowing: the emulator lane runs on a Linux runner
+with an **API 35 google_apis x86_64 image using ABI translation** —
+hosted macOS runners cannot run emulators (no hypervisor;
+android-emulator-runner issue #458), and API 35 x86_64 images are the
+documented way to run arm64-only APKs on GitHub Actions. The exec and
+SELinux rules under test key on the app's targetSdk, not the image
+version, so the lane is still representative; `uname -m` inside the
+emulator reports `x86_64` (the translated kernel) rather than
+`aarch64`, which the suite accepts.
 
 ## Repository layout
 
