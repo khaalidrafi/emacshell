@@ -138,7 +138,7 @@ fi
 echo "Building the '${flavor}' bootstrap (TERMUX_APP__PACKAGE_NAME=${app_id}) from ${src}"
 
 # --- patch the pinned tree for emacshell (idempotent, fail-loud) ---------------
-# FIVE deliberate deviations from the pinned tree, re-applied on every
+# SIX deliberate deviations from the pinned tree, re-applied on every
 # clone.  A future pin bump that changes these lines FAILS here,
 # forcing a deliberate re-review instead of silently shipping (see
 # REVIEW.org 'Bootstrap upstream patches').
@@ -230,6 +230,68 @@ download_file="${src}/scripts/build/termux_download.sh"
 sed -i 's|local retry=2|local retry=6|; s|local delay=60|local delay=90|' "${download_file}"
 if ! grep -q 'local retry=6' "${download_file}"; then
     echo "error: ${download_file} retry envelope not stretched; the pinned tree changed -- re-derive the emacshell patches (REVIEW.org 'Bootstrap upstream patches')" >&2
+    exit 1
+fi
+
+# Patch 6: teach termux-am's gradle to ride out Maven Central 429s.
+#   Run 45332393627 (the patch-5 re-run) died deep inside the apt
+#   build chain: apt depends on termux-am, whose build.sh downloads
+#   gradle 8.10.2 and resolves the whole Android Gradle Plugin
+#   classpath from repo.maven.apache.org -- which 429'd ("Too Many
+#   Requests") every POM fetch for the full resolution window.
+#   Gradle DOES retry 429s by itself (NetworkOperationBackOffAndRetry
+#   treats SC_TOO_MANY_REQUESTS as transient), but its defaults are
+#   max 3 attempts with a 1s initial backoff -- seconds against a
+#   minutes-long rate-limit burst on shared runner IPs.  Raise both
+#   through Gradle's own system properties: 8 attempts doubling from
+#   5s ride out ~10.5 minutes.  build.sh hard-exports GRADLE_OPTS, so
+#   the knobs must ride INSIDE that export (an env var from the
+#   workflow would be silently clobbered).
+termux_am_build="${src}/packages/termux-am/build.sh"
+sed -i 's|-Dorg.gradle.java.home=/usr/lib/jvm/java-1.17.0-openjdk-amd64"|-Dorg.gradle.java.home=/usr/lib/jvm/java-1.17.0-openjdk-amd64 -Dorg.gradle.internal.network.retry.max.attempts=8 -Dorg.gradle.internal.network.retry.initial.backOff=5000"|' "${termux_am_build}"
+if ! grep -q 'org.gradle.internal.network.retry.max.attempts=8' "${termux_am_build}"; then
+    echo "error: ${termux_am_build} gradle network-retry knobs not applied; the pinned tree changed -- re-derive the emacshell patches (REVIEW.org 'Bootstrap upstream patches')" >&2
+    exit 1
+fi
+#   Belt-and-suspenders, part 2 (the emulator lane's doctrine, applied
+#   inside the docker): Google's byte-for-byte Maven Central mirror
+#   replaces mavenCentral() in TermuxAm's build.gradle via the
+#   package-dir patch that termux_step_patch_package auto-applies.
+#   Mirror URL verified live from this sandbox (REVIEW.org emulator
+#   lane, run 45194666000 post-mortem); re-derive against the TermuxAm
+#   tarball named by packages/termux-am/build.sh TERMUX_PKG_SRCURL on
+#   any pin bump.
+cat > "${src}/packages/termux-am/maven-central-mirror.patch" <<'EMACSHELL_EOF'
+--- a/build.gradle
++++ b/build.gradle
+@@ -1,7 +1,11 @@
+ buildscript {
+     repositories {
+         google()
+-        mavenCentral()
++        // emacshell: Maven Central 429s GitHub-hosted runner IPs for
++        // minutes at a time (same POMs as the emulator lane's
++        // MAVEN_CENTRAL_MIRROR fix); Google's byte-for-byte mirror
++        // serves identical bytes without the rate limit.
++        maven { url 'https://maven-central.storage-download.googleapis.com' }
+     }
+     dependencies {
+         classpath "com.android.tools.build:gradle:8.6.1"
+@@ -11,7 +15,11 @@
+ allprojects {
+     repositories {
+         google()
+-        mavenCentral()
++        // emacshell: Maven Central 429s GitHub-hosted runner IPs for
++        // minutes at a time (same POMs as the emulator lane's
++        // MAVEN_CENTRAL_MIRROR fix); Google's byte-for-byte mirror
++        // serves identical bytes without the rate limit.
++        maven { url 'https://maven-central.storage-download.googleapis.com' }
+     }
+ }
+EMACSHELL_EOF
+if ! grep -q 'maven-central.storage-download.googleapis.com' "${src}/packages/termux-am/maven-central-mirror.patch"; then
+    echo "error: the termux-am maven mirror patch was not written; the pinned tree changed -- re-derive the emacshell patches (REVIEW.org 'Bootstrap upstream patches')" >&2
     exit 1
 fi
 

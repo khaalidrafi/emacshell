@@ -69,7 +69,19 @@ jobs:
           # Bootstrap build first: produces the deb closure of the
           # bootstrap package set (with the emacshell patches from
           # scripts/build-bootstrap.sh applied to the pinned tree).
-          scripts/build-bootstrap.sh "$flavor"
+          # One retry after a 10-minute cool-down: the lane is 1-2 h
+          # and dies on ANY single transient (run 45332393627 lost
+          # both flavors to a Maven Central 429 burst; 45321600509 to
+          # a mirrors.kernel.org stall -- patches 5 and 6 now ride
+          # those out in-tree, this retry covers everything else).
+          # Two failures in a row is a real bug, not a transient, so
+          # exactly one retry.
+          scripts/build-bootstrap.sh "$flavor" || {
+            code=$?
+            echo "::warning::bootstrap build failed (exit $code); one retry in 10 min"
+            sleep 600
+            scripts/build-bootstrap.sh "$flavor"
+          }
 
       - name: Build extra packages requested for the repo
         if: contains(github.event.inputs.flavors, matrix.flavor) && github.event.inputs.extra_packages != ''
@@ -118,6 +130,13 @@ jobs:
         if: contains(github.event.inputs.flavors, matrix.flavor)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Pin gh to THIS repo: the step runs inside
+          # build/termux-packages/output, a clone of
+          # termux/termux-packages, so gh's git-remote autodetection
+          # targeted termux/termux-packages and died 403 (run
+          # 45332393627's distro lane, "Resource not accessible by
+          # integration").
+          GH_REPO: ${{ github.repository }}
           TAG: apt-${{ matrix.flavor }}-v1
         run: |
           set -euo pipefail
