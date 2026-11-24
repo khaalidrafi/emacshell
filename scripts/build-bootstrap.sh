@@ -253,45 +253,51 @@ if ! grep -q 'org.gradle.internal.network.retry.max.attempts=8' "${termux_am_bui
     echo "error: ${termux_am_build} gradle network-retry knobs not applied; the pinned tree changed -- re-derive the emacshell patches (REVIEW.org 'Bootstrap upstream patches')" >&2
     exit 1
 fi
-#   Belt-and-suspenders, part 2 (the emulator lane's doctrine, applied
-#   inside the docker): Google's byte-for-byte Maven Central mirror
-#   replaces mavenCentral() in TermuxAm's build.gradle via the
-#   package-dir patch that termux_step_patch_package auto-applies.
-#   Mirror URL verified live from this sandbox (REVIEW.org emulator
-#   lane, run 45194666000 post-mortem); re-derive against the TermuxAm
-#   tarball named by packages/termux-am/build.sh TERMUX_PKG_SRCURL on
-#   any pin bump.
+#   Belt-and-suspenders, part 2 (the whole repo's doctrine, applied
+#   inside the docker): Google's Maven Central mirror goes AHEAD of
+#   mavenCentral() in TermuxAm's build.gradle via the package-dir patch
+#   that termux_step_patch_package auto-applies.  Two laws learned the
+#   hard way (run 45348312415, 'BUILD FAILED in 5s'):
+#   (a) the URL must carry the /maven2 repository path -- the workflows
+#       and settings.gradle all use ...googleapis.com/maven2; the bare
+#       host 404s every artifact;
+#   (b) mavenCentral() STAYS after the mirror as fallback -- replacing
+#       it left no path to the artifacts when the mirror 404s; a mirror
+#       miss falls through, and a mavenCentral 429 burst rides the
+#       patch-6a knobs.  Re-derive against the TermuxAm tarball named by
+#       packages/termux-am/build.sh TERMUX_PKG_SRCURL on any pin bump.
 cat > "${src}/packages/termux-am/maven-central-mirror.patch" <<'EMACSHELL_EOF'
 --- a/build.gradle
 +++ b/build.gradle
-@@ -1,7 +1,11 @@
+@@ -1,6 +1,10 @@
  buildscript {
      repositories {
          google()
--        mavenCentral()
-+        // emacshell: Maven Central 429s GitHub-hosted runner IPs for
-+        // minutes at a time (same POMs as the emulator lane's
-+        // MAVEN_CENTRAL_MIRROR fix); Google's byte-for-byte mirror
-+        // serves identical bytes without the rate limit.
-+        maven { url 'https://maven-central.storage-download.googleapis.com' }
++        // emacshell: mirror ahead of mavenCentral() (the repo-wide
++        // MAVEN_CENTRAL_MIRROR doctrine, with the /maven2 path);
++        // mavenCentral() stays as the 429-riding fallback.
++        maven { url 'https://maven-central.storage-download.googleapis.com/maven2' }
+         mavenCentral()
      }
      dependencies {
-         classpath "com.android.tools.build:gradle:8.6.1"
-@@ -11,7 +15,11 @@
+@@ -11,6 +15,10 @@
  allprojects {
      repositories {
          google()
--        mavenCentral()
-+        // emacshell: Maven Central 429s GitHub-hosted runner IPs for
-+        // minutes at a time (same POMs as the emulator lane's
-+        // MAVEN_CENTRAL_MIRROR fix); Google's byte-for-byte mirror
-+        // serves identical bytes without the rate limit.
-+        maven { url 'https://maven-central.storage-download.googleapis.com' }
++        // emacshell: mirror ahead of mavenCentral() (the repo-wide
++        // MAVEN_CENTRAL_MIRROR doctrine, with the /maven2 path);
++        // mavenCentral() stays as the 429-riding fallback.
++        maven { url 'https://maven-central.storage-download.googleapis.com/maven2' }
+         mavenCentral()
      }
  }
 EMACSHELL_EOF
-if ! grep -q 'maven-central.storage-download.googleapis.com' "${src}/packages/termux-am/maven-central-mirror.patch"; then
-    echo "error: the termux-am maven mirror patch was not written; the pinned tree changed -- re-derive the emacshell patches (REVIEW.org 'Bootstrap upstream patches')" >&2
+if ! grep -q 'maven-central.storage-download.googleapis.com/maven2' "${src}/packages/termux-am/maven-central-mirror.patch"; then
+    echo "error: the termux-am maven mirror patch was not written (or lost its /maven2 path); the pinned tree changed -- re-derive the emacshell patches (REVIEW.org 'Bootstrap upstream patches')" >&2
+    exit 1
+fi
+if ! grep -q 'mavenCentral()' "${src}/packages/termux-am/maven-central-mirror.patch"; then
+    echo "error: the termux-am patch dropped the mavenCentral() fallback; a mirror outage must not be fatal -- re-derive (REVIEW.org 'Bootstrap upstream patches')" >&2
     exit 1
 fi
 
