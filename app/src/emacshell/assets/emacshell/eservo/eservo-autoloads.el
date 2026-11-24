@@ -12,7 +12,8 @@
 (autoload 'eservo-start "eservo" "\
 Start a browser session via BACKEND (default `eservo-backend').
 With \\[universal-argument] prompt for the backend.
-Returns the driver.  Errors with a hint if one is already live.
+Returns the driver.  A DEAD previous driver is stopped quietly and
+replaced; only a live one is an error (run `eservo-stop' first).
 
 (fn &optional BACKEND)" t)
 (autoload 'eservo-stop "eservo" "\
@@ -166,6 +167,7 @@ same SITE name.  On Termux/Android, Termux:API/X11 users may need
 ;;; Generated autoloads from eservo-ws.el
 
 (register-definition-prefixes "eservo-ws" '("eservo-ws-"))
+
 
 ;;; End of scraped data
 

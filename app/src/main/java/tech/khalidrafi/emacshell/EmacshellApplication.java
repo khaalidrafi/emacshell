@@ -189,12 +189,16 @@ public final class EmacshellApplication extends Application
 
     /**
      * Elisp packages shipped as app code (never user config): eservo
-     * (browser automation) and elwidget (the widget maker whose specs
-     * the AppWidget host renders).  Pinned by pins/<name>.txt +
-     * pins/<name>.sha256.
+     * (browser automation), elwidget (the widget maker whose specs
+     * the AppWidget host renders) and emacshell (the app's own
+     * command set: M-x termux, the apt-repo repair; it carries a
+     * site-start.el so its commands load for EVERY install, even one
+     * whose user-owned init.el predates the package).  eservo and
+     * elwidget are pinned by pins/<name>.txt + pins/<name>.sha256;
+     * emacshell is native to this repo (no upstream pin).
      */
     private static final String[] VENDORED_PACKAGES =
-            {"eservo", "elwidget"};
+            {"eservo", "elwidget", "emacshell"};
 
     /**
      * These packages are re-installed on every boot: upgrading

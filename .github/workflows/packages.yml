@@ -1,0 +1,140 @@
+# packages workflow: build the emacshell CUSTOM-PREFIX apt repository
+# (GitHub Releases, absolute-URL flat repo) for one flavor.
+#
+# WHY: every Termux package hardcodes the prefix
+# /data/data/com.termux/files/usr at build time.  Emacshell installs
+# under its own applicationId, so the upstream repo cannot be used:
+# dpkg dies with
+#   error creating directory './data/data/com.termux': Permission denied
+# (field report on v0.1.4).  The bootstrap already ships a
+# custom-prefix package set; this workflow turns the SAME build into
+# a servable repository so `pkg upgrade' and `pkg install' work.
+#
+# Layout produced (release tag apt-<flavor>-v1, rolling):
+#   Packages, Packages.gz, Release   the flat-repo index
+#   *.deb                            every package built (bootstrap
+#                                    set + subpackages)
+#   bootstrap-aarch64.zip[.sha256]   convenience copy, same build
+#
+# The sources.list on devices points at
+#   deb [trusted=yes] \
+#     https://github.com/khaalidrafi/emacshell/releases/download/apt-<flavor>-v1 ./
+# (written by TermuxInstaller.fixAptSourcesList on fresh installs and
+# by M-x termux-fix-repo / site-start on existing ones).  apt follows
+# the release-asset redirects; absolute Filename URLs in the Packages
+# index are what make plain release assets work as a repo.
+#
+# Manual-dispatch only (1-2 h per flavor, same as bootstrap.yml);
+# re-runs clobber the rolling tag's assets.  Assets for packages that
+# disappeared from the build linger on the tag -- harmless (the index
+# defines what apt sees) and noted in the release body.
+
+name: packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      flavors:
+        description: 'Space-separated flavors to publish (termux distro)'
+        required: false
+        default: 'termux distro'
+      extra_packages:
+        description: 'Extra termux-packages to build into the repo (space-separated, e.g. "make perl"); big ones like clang add hours'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  repo:
+    name: apt repo (${{ matrix.flavor }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        flavor: [termux, distro]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Repo consistency checks
+        run: scripts/check.sh
+
+      - name: Build the custom-prefix package set in the termux-packages Docker
+        if: contains(github.event.inputs.flavors, matrix.flavor)
+        run: |
+          set -euo pipefail
+          flavor="${{ matrix.flavor }}"
+          # Bootstrap build first: produces the deb closure of the
+          # bootstrap package set (with the emacshell patches from
+          # scripts/build-bootstrap.sh applied to the pinned tree).
+          scripts/build-bootstrap.sh "$flavor"
+
+      - name: Build extra packages requested for the repo
+        if: contains(github.event.inputs.flavors, matrix.flavor) && github.event.inputs.extra_packages != ''
+        run: |
+          set -euo pipefail
+          flavor="${{ matrix.flavor }}"
+          app_id="$(sed -n "s/^applicationId$(printf '%s' "$flavor" | sed 's/^./\U&/')=//p" gradle.properties | tr -d '[:space:]')"
+          src="build/termux-packages"
+          [ -d "$src" ] || { echo "no termux-packages checkout (bootstrap step skipped?)"; exit 1; }
+          cd "$src"
+          # The pinned tree carries the emacshell patches from
+          # scripts/build-bootstrap.sh; keep the same prefix env.
+          for pkg in ${{ github.event.inputs.extra_packages }}; do
+            echo "::group::building $pkg"
+            TERMUX_DOCKER_EXEC_EXTRA_ARGS="--env TERMUX_APP__PACKAGE_NAME=${app_id} --env TERMUX_APP_PACKAGE=${app_id}" \
+              ./scripts/run-docker.sh ./build-package.sh -I -a aarch64 "$pkg"
+            echo "::endgroup::"
+          done
+
+      - name: Index the repository (flat, absolute URLs)
+        if: contains(github.event.inputs.flavors, matrix.flavor)
+        run: |
+          set -euo pipefail
+          flavor="${{ matrix.flavor }}"
+          tag="apt-${flavor}-v1"
+          base="https://github.com/${{ github.repository }}/releases/download/${tag}"
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq apt-utils >/dev/null
+          cd build/termux-packages/output
+          echo "indexing $(ls -1 *.deb | wc -l) debs"
+          apt-ftparchive packages . > Packages
+          # Filename: must be absolute for a release-asset flat repo.
+          # (apt-ftparchive writes either "./name.deb" or "name.deb";
+          # normalize then prefix.)
+          sed -i "s|^Filename: \\.\\/|Filename: |" Packages
+          sed -i "s|^Filename: |Filename: ${base}/|" Packages
+          gzip -k -9 Packages
+          apt-ftparchive -o APT::FTPArchive::Release::Origin="emacshell" \
+                         -o APT::FTPArchive::Release::Suite="stable" \
+                         -o APT::FTPArchive::Release::Codename="emacshell-${flavor}" \
+                         release . > Release
+          grep -c '^Filename: https://' Packages
+          head -12 Packages
+
+      - name: Publish to the rolling release tag
+        if: contains(github.event.inputs.flavors, matrix.flavor)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: apt-${{ matrix.flavor }}-v1
+        run: |
+          set -euo pipefail
+          flavor="${{ matrix.flavor }}"
+          cd build/termux-packages/output
+          app_id="$(sed -n "s/^applicationId$(printf '%s' "$flavor" | sed 's/^./\U&/')=//p" gradle.properties | tr -d '[:space:]')"
+          notes="$(printf 'Custom-prefix apt repository for the emacshell %s flavor.\n\nBuilt from the termux-packages release pinned in pins/termux-packages.txt with TERMUX_APP__PACKAGE_NAME=%s.\n\nUse on a device (sources.list):\n  deb [trusted=yes] https://github.com/%s/releases/download/%s ./\n\npkg/apt see exactly this repo (sources.list is written at bootstrap time by TermuxInstaller and repaired by M-x termux-fix-repo on older installs). Packages beyond the bootstrap set%s are not served yet; re-run this workflow with the extra_packages input to grow it.' \
+            "$flavor" "$app_id" '${{ github.repository }}' "$TAG" \
+            "${{ github.event.inputs.extra_packages != '' && ' (plus the requested extras)' || '' }}")"
+          gh release view "$TAG" --json name >/dev/null 2>&1 \
+            || gh release create "$TAG" --title "$TAG" --notes "$notes"
+          gh release upload "$TAG" Packages Packages.gz Release --clobber
+          # Debs in batches: keep the argv well under limits.
+          ls -1 *.deb | xargs -n 25 gh release upload "$TAG" --clobber
+          # Convenience: the bootstrap zip of the same build.
+          if [ -f "../../../bootstrap/${flavor}/bootstrap-aarch64.zip" ]; then
+            cd "../../../bootstrap/${flavor}"
+            sha256sum bootstrap-aarch64.zip > bootstrap-aarch64.zip.sha256
+            gh release upload "$TAG" bootstrap-aarch64.zip bootstrap-aarch64.zip.sha256 --clobber || true
+          fi

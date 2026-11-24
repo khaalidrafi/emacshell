@@ -13,4 +13,4 @@
 
 repo=https://github.com/khaalidrafi/eservo
 branch=ai/main
-commit=5cccf7c0774b7612a5e58147fc8564e47439c123
+commit=d6039414d5e7c2cd2512ed9c2648ea3cbab7c13e

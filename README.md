@@ -23,7 +23,7 @@ second app.
 - The Termux application/UI layer is vendored from termux-app
   `v0.118.3` and adapted (see `patches/termux/`): no `sharedUserId`,
   no second launcher — Emacs is the app; the terminal is one keystroke
-  away (`M-x emacshell-open-terminal`).
+  away (`M-x termux`).
 
 ## Why a single APK?
 
@@ -45,8 +45,9 @@ emacshell does that surgery once, in the build system:
 2. `early-init.el` ships inside the APK and prepends that prefix to
    `PATH`/`exec-path`, so `M-x shell`, `compile`, `grep`, TRAMP —
    everything — simply works;
-3. the Termux terminal stays available as `M-x emacshell-open-terminal`
-   for the things that genuinely need a pty.
+3. the Termux terminal stays available as `M-x termux` (inside Emacs)
+   or `M-x termux-activity` (separate Android window) for the things
+   that genuinely need a pty.
 
 ## Side-by-side installability
 
@@ -116,6 +117,55 @@ configured signing secrets are unsigned and need
 targets SDK 28, like upstream Termux and GNU Emacs do, to keep the
 background-shell semantics they rely on — see REVIEW.org).
 
+## The terminal — `M-x termux`
+
+`M-x termux` opens a full Termux shell **inside Emacs** (a `term`
+buffer): the bootstrap's bash runs as a login shell with
+`PREFIX`/`TMPDIR` set, so `pkg`, `apt` and every other prefix tool
+work exactly as in a standalone Termux. `M-x termux-activity`
+(alias `emacshell-open-terminal`) opens the vendored TermuxActivity
+in a separate Android window instead — same app, same UID, same
+files — for the things that want a real Android-side pty (ssh agent,
+adb, android tools).
+
+Both commands ship as **app code** (`site-lisp/emacshell/`, with a
+`site-start.el` that loads it for every Emacs the app starts), so
+they appear on installs whose first-boot `init.el` predates them —
+unlike `init.el` itself, which is user-owned after first boot and is
+never rewritten.
+
+## pkg / apt — the custom-prefix repository
+
+Every Termux package hardcodes the prefix
+`/data/data/com.termux/files/usr` at build time. emacshell installs
+under its own applicationId, so the *upstream* Termux repositories
+cannot be used: dpkg dies with
+`error creating directory './data/data/com.termux': Permission denied`.
+The bootstrap in the APK is therefore built from termux-packages with
+the emacshell prefix (see `scripts/build-bootstrap.sh`), and the
+**[packages workflow](../../actions/workflows/packages.yml)**
+publishes the same package set as an apt repository on GitHub
+Releases:
+
+```
+deb [trusted=yes] https://github.com/khaalidrafi/emacshell/releases/download/apt-termux-v1 ./
+```
+
+Devices point at it automatically: `TermuxInstaller` writes the line
+at bootstrap time, and older installs get repaired by
+`M-x termux-fix-repo` (which also runs from `site-start.el` at
+startup). If `pkg upgrade` ever misbehaves after an upstream-repo
+excursion, `M-x termux-repair` is the one-shot fix: it repoints the
+repo, purges poisoned cached `.deb`s, and runs `apt-get update` +
+`apt-get -f install` (dropping `dpkg-perl` — whose upstream
+`perl, clang, make` toolchain dependencies have no business on a
+phone — if that is what blocks the repair).
+
+Scope: the repository serves the bootstrap package set (the ~100
+essentials). Anything beyond it can be added by re-running the
+workflow with its `extra_packages` input; the roadmap is a full
+mirror. `pkg install` of an unserved package will say so, plainly.
+
 ## eservo — the embedded browser-automation package
 
 emacshell vendors [eservo](https://github.com/khaalidrafi/eservo)
@@ -129,16 +179,22 @@ the app itself (`EMACSLOADPATH`) — first-boot `init.el` templates additionally
 load its autoloads, so startup cost is zero and `M-x eservo-*` works on first
 use.
 
-Backends from the app: `adb` (drive a paired phone's browser via
-`pkg install android-tools` inside the bundled terminal), `cdp` (drive a
-Chromium-based browser's DevTools port — on-device via the terminal's
-loopback, or a desktop browser over the LAN), and `embedded` — the servo
-engine loaded INTO the Emacs process as `libeservo.so`. The embedded module
-is the end state for this app (no separate browser app, no devtools port):
-its packaging plan (cargo-ndk arm64-v8a into `jniLibs`, Phase 2 of the
+Backends from the app: `embedded` — the servo engine loaded INTO the
+Emacs process as `libeservo.so` — is the end state for this app (no
+separate browser app, no devtools port); its packaging plan
+(cargo-ndk arm64-v8a into `jniLibs`, Phase 2 of the
 [eservo design doc](https://github.com/khaalidrafi/eservo/blob/ai/main/docs/EMBEDDED-SERVO.org))
 is tracked in REVIEW.org until the eservo servo-pin lane goes green on
-desktop first.
+desktop first. Until the module ships, eservo's default `auto` backend
+picks the first backend that can actually run where you are — `cdp`
+(a Chromium-based browser's DevTools port, on-device via the terminal's
+loopback or a desktop browser over the LAN) or `adb` (a paired phone's
+browser via `pkg install android-tools`) — and when nothing works the
+error lists *why* each backend was rejected instead of blaming a missing
+chromium binary on a machine that never had one. Commands that need a
+browser also start one automatically now (`eservo-auto-start`, default
+t): `M-x eservo-goto` just works; `M-x eservo-start` is only needed to
+pin a specific backend.
 
 Existing installs whose first-boot `init.el` predates eservo: add
 
@@ -335,7 +391,8 @@ directory; from then on they are yours. Delete them and Emacs starts
 bare.
 
 **Where is the Termux app icon?** There is none, by design: Emacs is
-the app. The terminal is one `M-x` away and stays running behind it.
+the app. The terminal is one `M-x termux` away and stays running
+behind it.
 
 ## License
 

@@ -138,7 +138,7 @@ fi
 echo "Building the '${flavor}' bootstrap (TERMUX_APP__PACKAGE_NAME=${app_id}) from ${src}"
 
 # --- patch the pinned tree for emacshell (idempotent, fail-loud) ---------------
-# THREE deliberate deviations from the pinned tree, re-applied on every
+# FOUR deliberate deviations from the pinned tree, re-applied on every
 # clone.  A future pin bump that changes these lines FAILS here,
 # forcing a deliberate re-review instead of silently shipping (see
 # REVIEW.org 'Bootstrap upstream patches').
@@ -187,6 +187,24 @@ if grep -q '"bzip2"' "${bootstraps_file}"; then
     echo "error: ${bootstraps_file} still references the removed 'bzip2' package; the pinned tree changed -- re-derive the emacshell patches (REVIEW.org 'Bootstrap upstream patches')" >&2
     exit 1
 fi
+# Patch 4: skip the dpkg-perl subpackage during bootstrap extraction.
+#   Upstream declares dpkg-perl's runtime deps as "perl, clang, make"
+#   (packages/dpkg/dpkg-perl.subpackage.sh) -- a whole toolchain that
+#   is NOT in the bootstrap package set.  Extracting dpkg-perl anyway
+#   (extract_debs takes every deb from output/) records
+#   "Status: install ok installed" with unmet Depends, so the FIRST
+#   `pkg upgrade` on a fresh device dies on unmet dependencies and,
+#   pointed at the upstream repo, tries to install clang -- a
+#   com.termux-prefixed package that cannot unpack under this
+#   applicationId (the v0.1.4 field report).  dpkg-perl stays
+#   available from the emacshell apt repo (packages.yml) for anyone
+#   who actually builds debs on the phone.
+sed -i 's|if \[\[ "$current_package_name" == \*"-static" \]\]; then|if [[ "$current_package_name" == *"-static" ]] || [[ "$current_package_name" == "dpkg-perl" ]]; then|' "${bootstraps_file}"
+if ! grep -q '"dpkg-perl"' "${bootstraps_file}"; then
+    echo "error: ${bootstraps_file} still extracts dpkg-perl; the pinned tree changed -- re-derive the emacshell patches (REVIEW.org 'Bootstrap upstream patches')" >&2
+    exit 1
+fi
+
 # Patch 3: land the zip in output/ (AppArmor-allowed) instead of the
 # repo root (AppArmor-denied).  mkdir -p in case no deb was produced
 # yet (the dir normally exists because every package build drops its

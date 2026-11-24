@@ -215,6 +215,17 @@ public final class TermuxInstaller {
                         throw new RuntimeException("Moving termux prefix staging to prefix directory failed");
                     }
 
+                    // Emacshell: point apt at the app's own custom-prefix
+                    // repository.  The bootstrap's apt package ships a
+                    // sources.list naming the UPSTREAM termux-main repo,
+                    // whose packages are com.termux-prefixed and cannot be
+                    // unpacked under this applicationId (dpkg dies with
+                    // "error creating directory './data/data/com.termux':
+                    // Permission denied").  packages.yml in the emacshell
+                    // repo publishes the same packages rebuilt for this
+                    // prefix under the release tag apt-<flavor>-v1.
+                    fixAptSourcesList();
+
                     // Run Termux bootstrap second stage.
                     String termuxBootstrapSecondStageFile = TERMUX_PREFIX_DIR_PATH + "/etc/termux/bootstrap/termux-bootstrap-second-stage.sh";
                     if (!FileUtils.fileExists(termuxBootstrapSecondStageFile, false)) {
@@ -260,6 +271,54 @@ public final class TermuxInstaller {
                 }
             }
         }.start();
+    }
+
+    /**
+     * Emacshell: rewrite $PREFIX/etc/apt/sources.list to the app's own
+     * repository when it still names an upstream (com.termux-prefixed)
+     * repo.  Idempotent; the original upstream lines are preserved as
+     * comments.  The Elisp side (site-lisp emacshell package,
+     * `termux-fix-repo') does the same for installs whose bootstrap
+     * predates this fix; this Java-side pass covers fresh installs at
+     * the moment the prefix lands.
+     */
+    private static void fixAptSourcesList() {
+        try {
+            File sources = new File(TERMUX_PREFIX_DIR_PATH, "etc/apt/sources.list");
+            if (!sources.isFile())
+                return;
+            String flavor = TermuxConstants.TERMUX_PACKAGE_NAME.endsWith(".distro") ? "distro" : "termux";
+            String repoLine = "deb [trusted=yes] https://github.com/khaalidrafi/emacshell/releases/download/apt-"
+                + flavor + "-v1 ./";
+            StringBuilder out = new StringBuilder();
+            boolean changed = false;
+            try (BufferedReader reader =
+                    java.nio.file.Files.newBufferedReader(sources.toPath())) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    if (line.startsWith("deb ")
+                        && (line.contains("packages.termux.dev")
+                            || line.contains("packages-cf.termux.dev"))) {
+                        out.append("# emacshell: upstream repo is com.termux-prefixed and unusable under this applicationId\n");
+                        out.append("# ").append(line).append('\n');
+                        out.append(repoLine).append('\n');
+                        changed = true;
+                    } else {
+                        out.append(line).append('\n');
+                    }
+                }
+            }
+            if (changed) {
+                try (FileOutputStream fos = new FileOutputStream(sources)) {
+                    fos.write(out.toString().getBytes("UTF-8"));
+                }
+                Logger.logInfo(LOG_TAG, "Rewrote apt sources.list to the emacshell repository");
+            }
+        } catch (final Exception e) {
+            // Never block the bootstrap over the repo fix; the Elisp
+            // side retries it on every Emacs start.
+            Logger.logWarnExtended(LOG_TAG, "Failed to fix apt sources.list: " + e.getMessage());
+        }
     }
 
     public static void showBootstrapErrorDialog(Activity activity, Runnable whenDone, String message) {
