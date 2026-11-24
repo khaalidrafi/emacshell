@@ -122,8 +122,11 @@ jobs:
         run: |
           set -euo pipefail
           flavor="${{ matrix.flavor }}"
-          cd build/termux-packages/output
+          # gradle.properties lives at the repo root: read it BEFORE
+          # cd'ing into the build output (run 45308285110 died here:
+          # "sed: can't read gradle.properties").
           app_id="$(sed -n "s/^applicationId$(printf '%s' "$flavor" | sed 's/^./\U&/')=//p" gradle.properties | tr -d '[:space:]')"
+          cd build/termux-packages/output
           notes="$(printf 'Custom-prefix apt repository for the emacshell %s flavor.\n\nBuilt from the termux-packages release pinned in pins/termux-packages.txt with TERMUX_APP__PACKAGE_NAME=%s.\n\nUse on a device (sources.list):\n  deb [trusted=yes] https://github.com/%s/releases/download/%s ./\n\npkg/apt see exactly this repo (sources.list is written at bootstrap time by TermuxInstaller and repaired by M-x termux-fix-repo on older installs). Packages beyond the bootstrap set%s are not served yet; re-run this workflow with the extra_packages input to grow it.' \
             "$flavor" "$app_id" '${{ github.repository }}' "$TAG" \
             "${{ github.event.inputs.extra_packages != '' && ' (plus the requested extras)' || '' }}")"
