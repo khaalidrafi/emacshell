@@ -1,0 +1,82 @@
+#+TITLE: emacshell TODOS board
+#+PROPERTY: Effort_ALL 0:10 0:20 0:40 1:00 2:00 4:00
+# Board law (Owner order 2026-11-24): STRICT TIME DISCIPLINE in Org's
+# own vocabulary, for every seat working this repo:
+#   1. Every open item carries SCHEDULED and/or DEADLINE.  DEADLINE
+#      always carries a warning lead (e.g. -1h) so the seat escalates
+#      BEFORE the wall, never after.
+#   2. Every open item carries an :EFFORT: estimate; when actual work
+#      exceeds it by 50%, APPEND a note and re-estimate -- never edit
+#      history silently.
+#   3. Every working session is clocked in a :LOGBOOK:.  No session,
+#      no claim of work.
+#   4. A deadline that will slip gets a show-cause note to the Owner
+#      AT the warning time, with the new ETA and the reason.
+#   5. Rows are APPEND-ONLY: status moves by appending state lines
+#      under the item, never by rewriting what was already written.
+#   6. The board is re-read at the start of every workday (09:00
+#      Asia/Dhaka) and at the close of the last active session.
+
+* ACTIVE
+
+** TODO packages.yml lane green: custom-prefix apt repo published    :P1:blocker:
+   DEADLINE: <2026-11-24 Tue 18:30 -1h>
+   SCHEDULED: <2026-11-24 Tue 15:30>
+   :PROPERTIES:
+   :EFFORT:   2:00
+   :END:
+   - [2026-11-24] Blocker chain for the Owner's first real use of
+     Emacshell: packages.yml must go green so release tags
+     apt-termux-v1 / apt-distro-v1 carry the flat apt repo (Packages
+     index + .debs), which is what M-x termux-fix-repo points
+     sources.list at.
+   - [2026-11-24] Run 45332393627: distro lane died at Publish (gh
+     targeted termux/termux-packages from inside the output clone,
+     403); termux lane died on Maven Central 429s in the termux-am
+     gradle resolve.  Fixed as 768153b (GH_REPO pin + patch 6).
+   - [2026-11-24] Run 45348312415 (on 768153b): BOTH lanes died in 5s
+     -- patch 6b wrote the mirror URL WITHOUT /maven2 and REPLACED
+     mavenCentral(), so every classpath POM 404'd instantly.  Root
+     cause verified live: ...googleapis.com/maven2 200s on every
+     artifact; bare host 404s (same from the runner's log).
+   - [2026-11-24] Corrective commit on ai/main: mirror inserted AHEAD
+     of each mavenCentral() (kept as fallback), hunk counts from a
+     real diff of TermuxAm v0.8.1 build.gradle (dry-run + apply +
+     content-match verified in sandbox), plus two fail-loud guards.
+     New packages.yml run dispatched; verdict watcher scheduled.
+   :LOGBOOK:
+   CLOCK: [2026-11-24 Tue 14:35]--[2026-11-24 Tue 15:15] =>  0:40
+   (retroactive: session started before this board existed; start
+   time approximate.  Covers run polling, log triage of 45332393627
+   + 45348312415, mirror diagnosis, patch re-derivation and guards.)
+   :END:
+
+** WAITING Owner on-device onboarding: v0.1.4 + apt smoke           :P0:owner:
+   DEADLINE: <2026-11-25 Wed 12:00 -6h>
+   :PROPERTIES:
+   :EFFORT:   0:40
+   :END:
+   - [2026-11-24] Owner could not get started yet -- the whole day
+     burned on the packages lane above.  Unblocks automatically once
+     the P1 item lands: sideload the v0.1.4 APK, M-x termux-fix-repo,
+     then `apt update && apt install less` on the phone (the
+     long-OPEN on-device test).  Seat owes the Owner a one-message
+     onboarding walkthrough the moment the tag is verified.
+
+** TODO time-discipline retrofit across seats                        :P2:
+   SCHEDULED: <2026-11-25 Wed 09:00>
+   :PROPERTIES:
+   :EFFORT:   0:40
+   :END:
+   - [2026-11-24] Audit found ZERO DEADLINE/EFFORT/LOGBOOK anywhere;
+     this board is the retrofit start.  Next: confirm the other
+     active repos' boards carry the same six laws above.
+
+* DONE
+
+** DONE sensible-packages: deprecate cline-baseline                 :P1:
+   CLOSED: [2026-11-24 Tue 15:05]
+   - [2026-11-24] cae618e (deprecate, alias to cline-bin) + ecd30a3
+     (news) verified GREEN by CI run 45352236805 (every step success,
+     both jobs).  Baseline retired because "things now just work";
+     cline-bin is the only lane.
