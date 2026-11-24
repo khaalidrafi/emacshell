@@ -138,7 +138,7 @@ fi
 echo "Building the '${flavor}' bootstrap (TERMUX_APP__PACKAGE_NAME=${app_id}) from ${src}"
 
 # --- patch the pinned tree for emacshell (idempotent, fail-loud) ---------------
-# FOUR deliberate deviations from the pinned tree, re-applied on every
+# FIVE deliberate deviations from the pinned tree, re-applied on every
 # clone.  A future pin bump that changes these lines FAILS here,
 # forcing a deliberate re-review instead of silently shipping (see
 # REVIEW.org 'Bootstrap upstream patches').
@@ -212,6 +212,24 @@ fi
 sed -i 's|^\tmv -f "${BOOTSTRAP_TMPDIR}/bootstrap-${1}.zip" "\$TERMUX_PACKAGES_DIRECTORY/"$|\tmkdir -p "${TERMUX_BUILT_DEBS_DIRECTORY}"\n\tmv -f "${BOOTSTRAP_TMPDIR}/bootstrap-${1}.zip" "${TERMUX_BUILT_DEBS_DIRECTORY}/"|' "${bootstraps_file}"
 if ! grep -q 'mv -f "${BOOTSTRAP_TMPDIR}/bootstrap-${1}.zip" "${TERMUX_BUILT_DEBS_DIRECTORY}/"' "${bootstraps_file}"; then
     echo "error: ${bootstraps_file} still moves the zip into the AppArmor-denied repo root; the pinned tree changed -- re-derive the emacshell patches (REVIEW.org 'Bootstrap upstream patches')" >&2
+    exit 1
+fi
+
+# Patch 5: stretch termux_download's outer retry envelope.
+#   Upstream's downloader (scripts/build/termux_download.sh) already
+#   retries hard INSIDE curl (--retry 5, --retry-max-time 120) but its
+#   outer loop is only retry=2 rounds with delay=60 -- about 5 minutes
+#   total.  Run 45321600509 lost BOTH flavors to a mirrors.kernel.org
+#   stall that lasted 20+ minutes: every round of make-4.4.1.tar.gz
+#   and libunistring-1.5.tar.xz timed out on connect, and apt's build
+#   died on different runners at 04:09Z and 04:23Z (the previous run,
+#   45308285110, sailed through the same step an hour earlier).
+#   retry=6 with delay=90 rides out a ~20-minute mirror outage;
+#   everything else about the download logic stays upstream.
+download_file="${src}/scripts/build/termux_download.sh"
+sed -i 's|local retry=2|local retry=6|; s|local delay=60|local delay=90|' "${download_file}"
+if ! grep -q 'local retry=6' "${download_file}"; then
+    echo "error: ${download_file} retry envelope not stretched; the pinned tree changed -- re-derive the emacshell patches (REVIEW.org 'Bootstrap upstream patches')" >&2
     exit 1
 fi
 
