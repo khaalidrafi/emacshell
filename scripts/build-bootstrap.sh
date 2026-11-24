@@ -199,7 +199,7 @@ fi
 #   applicationId (the v0.1.4 field report).  dpkg-perl stays
 #   available from the emacshell apt repo (packages.yml) for anyone
 #   who actually builds debs on the phone.
-sed -i 's|if \[\[ "$current_package_name" == \*"-static" \]\]; then|if [[ "$current_package_name" == *"-static" ]] || [[ "$current_package_name" == "dpkg-perl" ]]; then|' "${bootstraps_file}"
+sed -i 's@if \[\[ "$current_package_name" == \*"-static" \]\]; then@if [[ "$current_package_name" == *"-static" ]] || [[ "$current_package_name" == "dpkg-perl" ]]; then@' "${bootstraps_file}"
 if ! grep -q '"dpkg-perl"' "${bootstraps_file}"; then
     echo "error: ${bootstraps_file} still extracts dpkg-perl; the pinned tree changed -- re-derive the emacshell patches (REVIEW.org 'Bootstrap upstream patches')" >&2
     exit 1
