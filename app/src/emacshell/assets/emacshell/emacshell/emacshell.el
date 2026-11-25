@@ -124,25 +124,36 @@ the system am wrapper."
 (defconst emacshell-apt-repo-base
   "https://github.com/khaalidrafi/emacshell/releases/download"
   "Base URL of the app's package repositories (GitHub Releases).
-Each flavor's repo lives under tag apt-<flavor>-v1 (see
-`emacshell--apt-repo-url'); the Packages index uses absolute asset
+Each flavor's repo lives under the emacshell-packages tags (see
+`emacshell--apt-repo-tag'); the Packages index uses absolute asset
 URLs, which is what makes a flat repo work off plain release
 assets.")
 
+(defun emacshell--apt-repo-tag ()
+  "Release tag of this flavor's custom-prefix apt repository.
+The repository is named emacshell-packages; the termux flavor owns
+the bare tag, other flavors append theirs (the apt-<flavor>-v1
+tags were retired 2026-11-25)."
+  (if (string= (emacshell--flavor) "termux")
+      "emacshell-packages-v1"
+    (concat "emacshell-packages-" (emacshell--flavor) "-v1")))
+
 (defun emacshell--apt-repo-url ()
   "Flat-repo URL of this flavor's custom-prefix apt repository."
-  (concat emacshell-apt-repo-base
-          "/apt-" (emacshell--flavor) "-v1"))
+  (concat emacshell-apt-repo-base "/" (emacshell--apt-repo-tag)))
 
 (defun emacshell--apt-sources-file ()
   "Path of apt's sources.list inside this prefix."
   (expand-file-name "etc/apt/sources.list" (emacshell-prefix)))
 
-(defun emacshell--upstream-repo-p (line)
-  "Non-nil when LINE names an UPSTREAM (com.termux-prefixed) repo."
+(defun emacshell--stale-repo-p (line)
+  "Non-nil when LINE names a repository that must be replaced.
+That is either an UPSTREAM (com.termux-prefixed) repo or one of the
+retired pre-rename emacshell tags (apt-<flavor>-v1, 2026-11-25)."
   (and (string-match-p "^deb\\b" line)
-       (string-match-p "packages\\.termux\\.dev\\|packages-cf\\.termux\\.dev"
-                       line)))
+       (or (string-match-p "packages\\.termux\\.dev\\|packages-cf\\.termux\\.dev"
+                           line)
+           (string-match-p "/releases/download/apt-" line))))
 
 (defun emacshell-apt-repo-line ()
   "The sources.list line for this flavor's emacshell repo."
@@ -162,9 +173,10 @@ Emacshell's own repository serves the same packages rebuilt for
 this prefix (GitHub Releases, absolute-URL flat repo; see
 packages.yml in the emacshell repo).
 
-Only touches sources.list when it currently points upstream;
-idempotent; the original line is preserved (commented out) above
-the replacement.  Returns non-nil when the file was changed."
+Only touches sources.list when it currently points upstream or at
+a retired repo tag; idempotent; the original line is preserved
+(commented out) above the replacement.  Returns non-nil when the
+file was changed."
   (interactive (list nil))
   (let* ((file (emacshell--apt-sources-file))
          (repo-line (emacshell-apt-repo-line)))
@@ -176,22 +188,25 @@ the replacement.  Returns non-nil when the file was changed."
                       (insert-file-contents file)
                       (split-string (buffer-string) "\n" t)))
              (needs-fix
-              ;; upstream repo line present, our line absent
-              (and (cl-some #'emacshell--upstream-repo-p lines)
+              ;; a stale repo line present, our line absent
+              (and (cl-some #'emacshell--stale-repo-p lines)
                    (not (member repo-line lines))))
              (changed nil))
         (when (and (not (string= (emacshell-package-name) "com.termux"))
                    needs-fix)
           (with-temp-file file
-            (dolist (line lines)
-              (if (emacshell--upstream-repo-p line)
-                  (progn
-                    (insert "# emacshell: upstream repo is com.termux-prefixed "
-                            "and unusable under this applicationId\n")
-                    (insert "# " line "\n")
-                    (insert repo-line "\n")
-                    (setq changed t))
-                (insert line "\n"))))
+            (let (inserted)
+              (dolist (line lines)
+                (if (emacshell--stale-repo-p line)
+                    (progn
+                      (insert "# emacshell: retired repo line (upstream is "
+                              "com.termux-prefixed; the apt-* tags were renamed)\n")
+                      (insert "# " line "\n")
+                      (unless inserted
+                        (insert repo-line "\n")
+                        (setq inserted t))
+                      (setq changed t))
+                  (insert line "\n")))))
           (when changed
             (unless quiet
               (message "termux-fix-repo: %s now uses the emacshell repo"

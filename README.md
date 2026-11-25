@@ -148,8 +148,13 @@ publishes the same package set as an apt repository on GitHub
 Releases:
 
 ```
-deb [trusted=yes] https://github.com/khaalidrafi/emacshell/releases/download/apt-termux-v1 ./
+deb [trusted=yes] https://github.com/khaalidrafi/emacshell/releases/download/emacshell-packages-v1 ./
 ```
+
+(the distro flavor uses `emacshell-packages-distro-v1`; the
+`apt-<flavor>-v1` tags were retired 2026-11-25, and installs that
+still name them are migrated automatically). The repo release also
+carries the current APKs — one release is everything a flavor needs.
 
 Devices point at it automatically: `TermuxInstaller` writes the line
 at bootstrap time, and older installs get repaired by

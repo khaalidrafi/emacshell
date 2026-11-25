@@ -223,7 +223,9 @@ public final class TermuxInstaller {
                     // "error creating directory './data/data/com.termux':
                     // Permission denied").  packages.yml in the emacshell
                     // repo publishes the same packages rebuilt for this
-                    // prefix under the release tag apt-<flavor>-v1.
+                    // prefix under the emacshell-packages release
+                    // tags (the apt-<flavor>-v1 tags were retired
+                    // 2026-11-25).
                     fixAptSourcesList();
 
                     // Run Termux bootstrap second stage.
@@ -275,12 +277,13 @@ public final class TermuxInstaller {
 
     /**
      * Emacshell: rewrite $PREFIX/etc/apt/sources.list to the app's own
-     * repository when it still names an upstream (com.termux-prefixed)
-     * repo.  Idempotent; the original upstream lines are preserved as
-     * comments.  The Elisp side (site-lisp emacshell package,
-     * `termux-fix-repo') does the same for installs whose bootstrap
-     * predates this fix; this Java-side pass covers fresh installs at
-     * the moment the prefix lands.
+     * repository (the emacshell-packages release) when it still names
+     * an upstream (com.termux-prefixed) repo or a retired apt-* tag.
+     * Idempotent; the original lines are preserved as comments.  The
+     * Elisp side (site-lisp emacshell package, `termux-fix-repo')
+     * does the same for installs whose bootstrap predates this fix;
+     * this Java-side pass covers fresh installs at the moment the
+     * prefix lands.
      */
     private static void fixAptSourcesList() {
         try {
@@ -288,20 +291,31 @@ public final class TermuxInstaller {
             if (!sources.isFile())
                 return;
             String flavor = TermuxConstants.TERMUX_PACKAGE_NAME.endsWith(".distro") ? "distro" : "termux";
-            String repoLine = "deb [trusted=yes] https://github.com/khaalidrafi/emacshell/releases/download/apt-"
-                + flavor + "-v1 ./";
+            // The repository is named emacshell-packages; the termux
+            // flavor owns the bare tag, other flavors append theirs.
+            String repoTag = "termux".equals(flavor)
+                ? "emacshell-packages-v1"
+                : "emacshell-packages-" + flavor + "-v1";
+            String repoLine = "deb [trusted=yes] https://github.com/khaalidrafi/emacshell/releases/download/"
+                + repoTag + " ./";
             StringBuilder out = new StringBuilder();
             boolean changed = false;
+            boolean repoLineWritten = false;
             try (BufferedReader reader =
                     java.nio.file.Files.newBufferedReader(sources.toPath())) {
                 String line;
                 while ((line = reader.readLine()) != null) {
                     if (line.startsWith("deb ")
                         && (line.contains("packages.termux.dev")
-                            || line.contains("packages-cf.termux.dev"))) {
-                        out.append("# emacshell: upstream repo is com.termux-prefixed and unusable under this applicationId\n");
+                            || line.contains("packages-cf.termux.dev")
+                            // the retired pre-rename repo tags
+                            || line.contains("/releases/download/apt-"))) {
+                        out.append("# emacshell: retired repository line (upstream packages are com.termux-prefixed; the apt-* tags were renamed)\n");
                         out.append("# ").append(line).append('\n');
-                        out.append(repoLine).append('\n');
+                        if (!repoLineWritten) {
+                            out.append(repoLine).append('\n');
+                            repoLineWritten = true;
+                        }
                         changed = true;
                     } else {
                         out.append(line).append('\n');

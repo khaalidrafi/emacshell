@@ -10,15 +10,23 @@
 # custom-prefix package set; this workflow turns the SAME build into
 # a servable repository so `pkg upgrade' and `pkg install' work.
 #
-# Layout produced (release tag apt-<flavor>-v1, rolling):
+# Layout produced (rolling release tag; the repository is named
+# emacshell-packages -- termux flavor: emacshell-packages-v1, distro
+# flavor: emacshell-packages-distro-v1):
 #   Packages, Packages.gz, Release   the flat-repo index
 #   *.deb                            every package built (bootstrap
 #                                    set + subpackages)
 #   bootstrap-aarch64.zip[.sha256]   convenience copy, same build
+#   emacshell-<flavor>-*.apk[.sha256]
+#                                    the current APKs, attached
+#                                    from the latest v* release so
+#                                    ONE release ships the repo
+#                                    together with the app
 #
 # The sources.list on devices points at
 #   deb [trusted=yes] \
-#     https://github.com/khaalidrafi/emacshell/releases/download/apt-<flavor>-v1 ./
+#     https://github.com/khaalidrafi/emacshell/releases/download/emacshell-packages-v1 ./
+#     (distro flavor: emacshell-packages-distro-v1)
 # (written by TermuxInstaller.fixAptSourcesList on fresh installs and
 # by M-x termux-fix-repo / site-start on existing ones).  apt follows
 # the release-asset redirects; absolute Filename URLs in the Packages
@@ -106,7 +114,14 @@ jobs:
         run: |
           set -euo pipefail
           flavor="${{ matrix.flavor }}"
-          tag="apt-${flavor}-v1"
+          # The repository is named emacshell-packages (owner
+          # request, 2026-11-25; retired the apt-<flavor>-v1 tags):
+          # the termux flavor owns the bare name, other flavors
+          # append theirs.
+          case "$flavor" in
+            termux) tag="emacshell-packages-v1" ;;
+            *)      tag="emacshell-packages-${flavor}-v1" ;;
+          esac
           base="https://github.com/${{ github.repository }}/releases/download/${tag}"
           sudo apt-get update -qq
           sudo apt-get install -y -qq apt-utils >/dev/null
@@ -137,7 +152,9 @@ jobs:
           # 45332393627's distro lane, "Resource not accessible by
           # integration").
           GH_REPO: ${{ github.repository }}
-          TAG: apt-${{ matrix.flavor }}-v1
+          # Same naming as the index step: the termux flavor owns the
+          # bare emacshell-packages tag.
+          TAG: ${{ matrix.flavor == 'termux' && 'emacshell-packages-v1' || format('emacshell-packages-{0}-v1', matrix.flavor) }}
         run: |
           set -euo pipefail
           flavor="${{ matrix.flavor }}"
@@ -146,17 +163,45 @@ jobs:
           # "sed: can't read gradle.properties").
           app_id="$(sed -n "s/^applicationId$(printf '%s' "$flavor" | sed 's/^./\U&/')=//p" gradle.properties | tr -d '[:space:]')"
           cd build/termux-packages/output
-          notes="$(printf 'Custom-prefix apt repository for the emacshell %s flavor.\n\nBuilt from the termux-packages release pinned in pins/termux-packages.txt with TERMUX_APP__PACKAGE_NAME=%s.\n\nUse on a device (sources.list):\n  deb [trusted=yes] https://github.com/%s/releases/download/%s ./\n\npkg/apt see exactly this repo (sources.list is written at bootstrap time by TermuxInstaller and repaired by M-x termux-fix-repo on older installs). Packages beyond the bootstrap set%s are not served yet; re-run this workflow with the extra_packages input to grow it.' \
+          notes="$(printf 'emacshell-packages: the custom-prefix apt repository (and the app itself) for the emacshell %s flavor.\n\nBuilt from the termux-packages release pinned in pins/termux-packages.txt with TERMUX_APP__PACKAGE_NAME=%s.\n\nUse on a device (sources.list):\n  deb [trusted=yes] https://github.com/%s/releases/download/%s ./\n\npkg/apt see exactly this repo (sources.list is written at bootstrap time by TermuxInstaller and repaired by M-x termux-fix-repo on older installs). The current APKs are attached alongside the packages, so this one release is everything the flavor needs. Packages beyond the bootstrap set%s are not served yet; re-run this workflow with the extra_packages input to grow it.' \
             "$flavor" "$app_id" '${{ github.repository }}' "$TAG" \
             "${{ github.event.inputs.extra_packages != '' && ' (plus the requested extras)' || '' }}")"
           gh release view "$TAG" --json name >/dev/null 2>&1 \
             || gh release create "$TAG" --title "$TAG" --notes "$notes"
-          gh release upload "$TAG" Packages Packages.gz Release --clobber
-          # Debs in batches: keep the argv well under limits.
+          # Index files LAST: the repo only becomes usable when its
+          # Packages index is visible, after every deb has landed.
           ls -1 *.deb | xargs -n 25 gh release upload "$TAG" --clobber
+          gh release upload "$TAG" Packages Packages.gz Release --clobber
           # Convenience: the bootstrap zip of the same build.
           if [ -f "../../../bootstrap/${flavor}/bootstrap-aarch64.zip" ]; then
             cd "../../../bootstrap/${flavor}"
             sha256sum bootstrap-aarch64.zip > bootstrap-aarch64.zip.sha256
             gh release upload "$TAG" bootstrap-aarch64.zip bootstrap-aarch64.zip.sha256 --clobber || true
           fi
+
+      # The repo release ships the app too (owner request,
+      # 2026-11-25): pull this flavor's APKs from the latest
+      # versioned release and upload them next to the packages.
+      - name: "Attach the current APKs (one release: repo + app)"
+        if: contains(github.event.inputs.flavors, matrix.flavor)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          flavor="${{ matrix.flavor }}"
+          case "$flavor" in
+            termux) tag="emacshell-packages-v1" ;;
+            *)      tag="emacshell-packages-${flavor}-v1" ;;
+          esac
+          # gh release list prints newest first; the first tag that
+          # looks like a version is the current APK release.
+          apk_tag="$(gh release list --limit 100 | awk '$1 ~ /^v[0-9]+\.[0-9]+\.[0-9]+$/ {print $1; exit}')"
+          if [ -z "$apk_tag" ]; then
+            echo "::warning::no versioned APK release found; skipping the APK attach"
+            exit 0
+          fi
+          echo "attaching ${flavor} APKs from ${apk_tag} to ${tag}"
+          rm -rf /tmp/apk && mkdir -p /tmp/apk
+          gh release download "$apk_tag" --dir /tmp/apk --pattern "*-${flavor}-*.apk*"
+          ls -1 /tmp/apk | xargs -n 2 gh release upload "$tag" --clobber
