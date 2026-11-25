@@ -19,9 +19,43 @@
 
 * ACTIVE
 
-** TODO packages.yml lane green: custom-prefix apt repo published    :P1:blocker:
+** WAITING Owner on-device onboarding: v0.1.4 + apt smoke           :P0:owner:
+   DEADLINE: <2026-11-25 Wed 12:00 -6h>
+   :PROPERTIES:
+   :EFFORT:   0:40
+   :END:
+   - [2026-11-24] Owner could not get started yet -- the whole day
+     burned on the packages lane above.  Unblocks automatically once
+     the P1 item lands: sideload the v0.1.4 APK, M-x termux-fix-repo,
+     then `apt update && apt install less` on the phone (the
+     long-OPEN on-device test).  Seat owes the Owner a one-message
+     onboarding walkthrough the moment the tag is verified.
+   - [2026-11-25] UNBLOCKED by the green lane: tags verified 2026-11-24. Onboarding walkthrough delivered to the Owner (Discord): sideload the v0.1.4 APK, M-x termux-fix-repo, then apt update && apt install less.
+   :LOGBOOK:
+   CLOCK: [2026-11-25 Wed 10:09]--[2026-11-25 Wed 10:09] =>  0:01
+   :END:
+
+** TODO time-discipline retrofit across seats                        :P2:
+   SCHEDULED: <2026-11-25 Wed 09:00>
+   :PROPERTIES:
+   :EFFORT:   0:40
+   :END:
+   - [2026-11-24] Audit found ZERO DEADLINE/EFFORT/LOGBOOK anywhere;
+     this board is the retrofit start.  Next: confirm the other
+     active repos' boards carry the same six laws above.
+   - [2026-11-25] Automation landed (zero-LLM): scripts/org-board/ tooling committed to this repo (board_clock.sh start/stop/status/note + board_discipline.sh six-law audit, exit 1 on attention). Daily 09:00 Asia/Dhaka cron sweep scheduled (1 run/day, within the platform 3-runs/day cron limit).
+   - [2026-11-25] Dogfood session: daily sweep cron 547540 created (09:00 Asia/Dhaka, 1 run/day, within 3/day platform limit) and dry-run verified (exit 1 with 2 correct ATTENTION lines). Verdict-watcher rebuild obsolete -- run 45362555879 verdict already confirmed manually. Push of ai/main commit 1b155a6 (eservo vendoring) BLOCKED: every GitHub credential in the vault is dead (App JWT 401 could-not-be-decoded, GH_PAT/SLAVE_AGENT_PAT/FRESHORAMA_WEBSITE_PAT all 401); owner must re-seal a fresh credential in khaalidrafi/vault. Commit is safe locally.
+   :LOGBOOK:
+   CLOCK: [2026-11-25 Wed 10:09]--[2026-11-25 Wed 10:09] =>  0:01
+   CLOCK: [2026-11-25 Wed 10:33]--[2026-11-25 Wed 10:34] =>  0:01
+   :END:
+
+* DONE
+
+** DONE packages.yml lane green: custom-prefix apt repo published    :P1:blocker:
    DEADLINE: <2026-11-24 Tue 18:30 -1h>
    SCHEDULED: <2026-11-24 Tue 15:30>
+   CLOSED: [2026-11-24 Tue 16:18]
    :PROPERTIES:
    :EFFORT:   2:00
    :END:
@@ -44,35 +78,15 @@
      real diff of TermuxAm v0.8.1 build.gradle (dry-run + apply +
      content-match verified in sandbox), plus two fail-loud guards.
      New packages.yml run dispatched; verdict watcher scheduled.
+   - [2026-11-25] Run 45362555879 (head c6f73b7) GREEN: status completed, conclusion success (2026-11-24T10:18Z). Both release tags verified published with the full flat apt repo: Packages + Packages.gz + Release, ~100 .debs, bootstrap-aarch64.zip + .sha256 (apt-termux-v1 rel 456593019, apt-distro-v1 rel 456579753). The one-shot verdict watcher never fired (platform cron epoch bug: milliseconds value read as seconds; job deleted); verdict confirmed manually. Item COMPLETE -- row kept here per append-only law 5.
    :LOGBOOK:
    CLOCK: [2026-11-24 Tue 14:35]--[2026-11-24 Tue 15:15] =>  0:40
    (retroactive: session started before this board existed; start
    time approximate.  Covers run polling, log triage of 45332393627
    + 45348312415, mirror diagnosis, patch re-derivation and guards.)
+   CLOCK: [2026-11-25 Wed 10:09]--[2026-11-25 Wed 10:09] =>  0:01
    :END:
 
-** WAITING Owner on-device onboarding: v0.1.4 + apt smoke           :P0:owner:
-   DEADLINE: <2026-11-25 Wed 12:00 -6h>
-   :PROPERTIES:
-   :EFFORT:   0:40
-   :END:
-   - [2026-11-24] Owner could not get started yet -- the whole day
-     burned on the packages lane above.  Unblocks automatically once
-     the P1 item lands: sideload the v0.1.4 APK, M-x termux-fix-repo,
-     then `apt update && apt install less` on the phone (the
-     long-OPEN on-device test).  Seat owes the Owner a one-message
-     onboarding walkthrough the moment the tag is verified.
-
-** TODO time-discipline retrofit across seats                        :P2:
-   SCHEDULED: <2026-11-25 Wed 09:00>
-   :PROPERTIES:
-   :EFFORT:   0:40
-   :END:
-   - [2026-11-24] Audit found ZERO DEADLINE/EFFORT/LOGBOOK anywhere;
-     this board is the retrofit start.  Next: confirm the other
-     active repos' boards carry the same six laws above.
-
-* DONE
 
 ** DONE sensible-packages: deprecate cline-baseline                 :P1:
    CLOSED: [2026-11-24 Tue 15:05]
