@@ -133,6 +133,12 @@ jobs:
           # normalize then prefix.)
           sed -i "s|^Filename: \\.\\/|Filename: |" Packages
           sed -i "s|^Filename: |Filename: ${base}/|" Packages
+          # Epoch fix: apt-ftparchive renders epoch versions with a
+          # COLON (pkg_1:2.3-4.deb) while termux-packages names the
+          # artifact with a DOT (pkg_1.2.3-4.deb); the colon URLs 404.
+          # Found on the apt-termux-v1 index (6 entries), fixed
+          # 2026-11-25 during the emacshell-packages migration.
+          sed -i '/^Filename: /s/_\([0-9]\+\):/_\1./g' Packages
           gzip -k -9 Packages
           apt-ftparchive -o APT::FTPArchive::Release::Origin="emacshell" \
                          -o APT::FTPArchive::Release::Suite="stable" \

@@ -35,6 +35,39 @@
    CLOCK: [2026-11-25 Wed 10:09]--[2026-11-25 Wed 10:09] =>  0:01
    :END:
 
+** DONE emacshell-packages: rename the apt repo, ship the APK with it :P1:
+   CLOSED: [2026-11-25 Wed 12:55]
+   :PROPERTIES:
+   :EFFORT:   1:30
+   :END:
+   - [2026-11-25] Owner request after browsing Releases ("no new APK
+     releases, only the repos"): the package repository is now named
+     emacshell-packages -- termux flavor owns the bare rolling tag
+     emacshell-packages-v1, distro uses emacshell-packages-distro-v1;
+     the apt-<flavor>-v1 tags are retired (re-titled, kept online
+     only so v0.1.4 installs keep working until an APK with the
+     migration code replaces them).
+   - [2026-11-25] b7459ad (ai/main): packages.yml publishes under the
+     new tags and attaches this flavor's APKs from the latest v*
+     release; TermuxInstaller.fixAptSourcesList + M-x termux-fix-repo
+     now also migrate sources.list lines naming the retired apt-*
+     tags (elisp functional test: rewrites upstream + apt-tag lines,
+     idempotent, originals preserved commented).
+   - [2026-11-25] Migration done WITHOUT a 2-hour rebuild
+     (scripts/migrate_repos.py, sandbox): copied every asset to the
+     new releases, rewrote the Packages index to the new base,
+     regenerated Release checksums, attached the v0.1.4 APKs +
+     sidecars.  VERIFY-PASS both flavors: termux 219 index entries /
+     219 debs / 2 APKs, distro 226/226/2, all Filename URLs resolve.
+   - [2026-11-25] BONUS BUG fixed in the same pass: apt-ftparchive
+     renders epoch versions with a COLON (pkg_1:2.3-4.deb) while the
+     artifacts are named with a DOT -- 6 Filename URLs per old index
+     404'd since the first publish.  Indexes rewritten + sed guard
+     added to packages.yml so future builds are epoch-clean.
+   :LOGBOOK:
+   CLOCK: [2026-11-25 Wed 11:20]--[2026-11-25 Wed 12:55] =>  1:35
+   :END:
+
 ** TODO time-discipline retrofit across seats                        :P2:
    SCHEDULED: <2026-11-25 Wed 09:00>
    :PROPERTIES:
