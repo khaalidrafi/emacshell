@@ -18,14 +18,41 @@
 #      Asia/Dhaka) and at the close of the last active session.
 
 * ACTIVE
+** TODO v0.1.5 crashes on the Owner's device                 :P0:crash:
+   DEADLINE: <2026-11-27 Fri 23:59 -6h>
+   SCHEDULED: <2026-11-26 Thu 16:00>
+   :PROPERTIES:
+   :EFFORT:   4:00
+   :END:
+   - [2026-11-26] Owner report: v0.1.5 CRASHES on device; no logcat
+     captured yet.  Verified from the departing sandbox (full detail in
+     HANDOFF.md section 0): build run 45769328775 green on 9f0b9ad;
+     same signing key as v0.1.4 (50:A2:AA:2F...); bootstrap pin
+     byte-identical to v0.1.4 (9229ef36, run 44869748375, still
+     upstream-pointing -- patch 7 has never shipped); APK delta
+     v0.1.4->v0.1.5 = exactly two NEW site-lisp assets
+     (assets/emacshell/emacshell/{emacshell.el,site-start.el}), eservo
+     assets updated, classes.dex +1.5 KB; source delta 550acd8..9f0b9ad
+     = 11 commits / 15 files, with the site-lisp startup mechanism
+     (EMACSLOADPATH + site-start at every Emacs start) NEW in v0.1.5.
+     Static review found no unconditional crasher (Java in try/catch,
+     Elisp in ignore-errors) -- device repro needed: flavor/API, fresh
+     vs upgrade, crash moment, adb logcat + TermuxCrashUtils report,
+     whether v0.1.4 still works on the same device.
+   - [2026-11-26] Owner assignment: Gemini 4 Hydrogen is the Senior
+     Android Developer for Emacshell and owns this row from here.
+   :LOGBOOK:
+   CLOCK: [2026-11-26 Thu 15:40]--[2026-11-26 Thu 15:41] =>  0:01
+   :END:
+
 ** REVIEW v0.1.5: ready-on-install apt repo + release             :P1:
    DEADLINE: <2026-11-26 Wed 23:59 -2h>
    SCHEDULED: <2026-11-26 Wed 12:00>
    :PROPERTIES:
    :EFFORT:   1:30
    :END:
-   - [2026-11-26] Owner order: "I don't wanna run fix repo. I want to
-     have it ready on install."  Landed on ai/main: (1)
+   - [2026-11-26] Owner order: no manual fix-repo step; the apt
+     repository must be configured at install time.  Landed on ai/main: (1)
      TermuxInstaller.fixAptSourcesList now writes the
      emacshell-packages line UNCONDITIONALLY (missing/empty
      sources.list included); (2) termux-fix-repo / site-start ensure
@@ -49,6 +76,9 @@
      0.1.5 APKs, 0.1.4 APK assets retired there.  Remaining for
      DONE: the Owner's on-device `apt update && apt install less'
      on a fresh v0.1.5 install (the P0 row above).
+   - [2026-11-26] Owner then reported the app CRASHES on device --
+     triage moved to the P0 row above; this row stays REVIEW until
+     the crash is resolved and the on-device smoke passes.
    :LOGBOOK:
    CLOCK: [2026-11-26 Thu 12:35]--[2026-11-26 Thu 12:35] =>  0:01
    CLOCK: [2026-11-26 Thu 12:36]--[2026-11-26 Thu 13:05] =>  0:29
@@ -67,9 +97,9 @@
      onboarding walkthrough the moment the tag is verified.
    - [2026-11-25] UNBLOCKED by the green lane: tags verified 2026-11-24. Onboarding walkthrough delivered to the Owner (Discord): sideload the v0.1.4 APK, M-x termux-fix-repo, then apt update && apt install less.
    - [2026-11-26] SUPERSEDED by the v0.1.5 ready-on-install work (see
-     the P1 row below): the Owner rejected the fix-repo step
-     ("I don't wanna run fix repo. I want to have it ready on
-     install"), so the walkthrough is now: sideload the v0.1.5 APK,
+     the P1 row below): the Owner rejected the fix-repo step (the
+     repository must be configured at install time), so the
+     walkthrough is now: sideload the v0.1.5 APK,
      wait for the first-boot unpack, then `apt update && apt install
      less` -- nothing else, the repo line is written at install time.
    :LOGBOOK:
@@ -81,8 +111,8 @@
    :PROPERTIES:
    :EFFORT:   1:30
    :END:
-   - [2026-11-25] Owner request after browsing Releases ("no new APK
-     releases, only the repos"): the package repository is now named
+   - [2026-11-25] Owner request after browsing Releases: the package
+     repository is now named
      emacshell-packages -- termux flavor owns the bare rolling tag
      emacshell-packages-v1, distro uses emacshell-packages-distro-v1;
      the apt-<flavor>-v1 tags are retired (re-titled, kept online

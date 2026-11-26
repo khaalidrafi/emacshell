@@ -38,8 +38,8 @@
 +     * prefix under the emacshell-packages release tags (the
 +     * apt-<flavor>-v1 tags were retired 2026-11-25).
 +     *
-+     * Owner order 2026-11-26 ("I don't wanna run fix repo. I want to
-+     * have it ready on install"): the emacshell repository line is
++     * Owner order 2026-11-26 (ready on install, no manual repair
++     * step): the emacshell repository line is
 +     * written UNCONDITIONALLY -- a fresh install must be able to
 +     * `pkg install` immediately, with no manual repair step.  Retired
 +     * lines (upstream or pre-rename emacshell tags) are commented out

@@ -175,8 +175,8 @@ packages.yml in the emacshell repo).
 
 Touches sources.list only when it names an upstream or retired
 repository, or when the emacshell repository line is missing
-entirely (Owner order 2026-11-26: ready on install, no manual
-repair step); idempotent; the original line is preserved
+entirely (ready-on-install contract, Owner order 2026-11-26:
+no manual repair step); idempotent; the original line is preserved
 (commented out) above the replacement.  Returns non-nil when the
 file was changed."
   (interactive (list nil))
@@ -192,7 +192,7 @@ file was changed."
              (needs-fix
               ;; a stale repo line present, or our line absent
               ;; (every install must end up with a working `pkg':
-              ;; "ready on install", Owner order 2026-11-26)
+              ;; the ready-on-install contract, Owner order 2026-11-26)
               (or (cl-some #'emacshell--stale-repo-p lines)
                   (not (member repo-line lines))))
              (changed nil))
@@ -332,7 +332,8 @@ with an explanation in the buffer."
 Called from site-start.el for every interactive Emacs the app
 starts; batch Emacs is left alone.  Cheap (one file read) and fully
 idempotent -- the emacshell repository line is ensured on every
-install ("ready on install", Owner order 2026-11-26), stale
+install (ready-on-install contract, Owner order
+2026-11-26), stale
 upstream/retired lines are rewritten (preserved as comments), and
 a user who deliberately re-adds an upstream line is not fought
 with beyond the exact default lines."

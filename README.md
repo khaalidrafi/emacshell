@@ -160,10 +160,10 @@ deb [trusted=yes] https://github.com/khaalidrafi/emacshell/releases/download/ema
 still name them are migrated automatically). The repo release also
 carries the current APKs — one release is everything a flavor needs.
 
-**Ready on install** (v0.1.5, Owner order 2026-11-26: "I don't
-wanna run fix repo. I want to have it ready on install"). Three
-layers agree, so no manual repair step is ever needed on a fresh
-install: the bootstrap zip itself is born pointing at
+**Ready on install** (v0.1.5, Owner order 2026-11-26: the apt
+repository must be configured at install time, with no manual repair
+step). Three layers agree, so no manual repair step is ever needed on a
+fresh install: the bootstrap zip itself is born pointing at
 emacshell-packages (patch 7 in `scripts/build-bootstrap.sh`, applied
 to the produced zip at build time), `TermuxInstaller.fixAptSourcesList`
 writes the repository line unconditionally when the prefix lands, and

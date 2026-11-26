@@ -341,7 +341,7 @@ cp -f "${zip_path}" "${out_dir}/bootstrap-${ARCH}.zip"
 # apt package ships the upstream termux-main line; on device,
 # TermuxInstaller.fixAptSourcesList rewrites it at install time and
 # site-start.el repairs older installs, but Owner order 2026-11-26
-# ("I don't wanna run fix repo. I want to have it ready on install")
+# (ready on install, no manual fix step)
 # makes the bootstrap itself carry the right line from birth -- all
 # three layers agree, and a future regression in any one still leaves
 # the other two.  The zip entry is replaced in place; the sha256 below
