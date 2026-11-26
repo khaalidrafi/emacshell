@@ -62,3 +62,73 @@ repos as well."
   CI is the honest lane when they are PLACEHOLDER.
 - Record anything the owner should personally review in REVIEW.org;
   never delete a row without recording the resolution.
+
+## GNU Emacs on Android — Grounding (Emacs 31.1 / Manuals / Sources)
+
+Verified against `(emacs)Android`, `(elisp)Subprocess Creation` &
+`Library Search`, `(org)Protocols` & `Org Mobile`, GNU's Android
+`README`, and GNU Emacs 31 sources (`src/android.c`, `androidvfs.c`,
+`lread.c`, `emacs.c`, `lisp/startup.el`, `term/android-win.el`,
+`java/INSTALL`, `java/org/gnu/emacs/*.java`):
+
+- **Process & Java/C lifecycle**: `libemacs.so` is loaded by
+  `EmacsNative` inside the app JVM. `EmacsApplication` runs
+  `EmacsNative.setupSystemThread()`, records `apkFileName`
+  (`EMACS_CLASS_PATH`), and validates `emacs-<fingerprint>.pdmp` via
+  `findDumpFile()` (deleted if older than the APK). `EmacsService`
+  runs as a foreground service (`channel "emacs"`, `specialUse`) so
+  Android does not kill background Emacs (even on Android 13+ without
+  `POST_NOTIFICATIONS`, attempting the notification keeps it alive).
+  `EmacsThread` calls `setEmacsParams()` (`android_site_load_path` =
+  `files/site-lisp`, `LANG=en_US.utf8` on API >= 21,
+  `android_create_lib_link()` symlinking `~/../lib -> nativeLibraryDir`,
+  `android_vfs_init`) then `initEmacs()` (`HOME=filesDir`,
+  `TMPDIR=cacheDir`, `SHELL=/system/bin/sh`, `android_emacs_init`).
+  `EmacsActivity` (`singleInstance`) hosts the initial frame; closing
+  the last frame exits the Emacs process.
+- **Startup, `EMACSLOADPATH`, `site-start.el`, and `pdump`**:
+  - On first boot without a valid `.pdmp`, `will_dump_p()` is true:
+    `init_lread()` **ignores `EMACSLOADPATH` during dump** and runs
+    `loadup.el` from `/assets/lisp/` + `files/site-lisp` to write the
+    dump file; `normal-top-level` then finishes startup.
+  - On normal/post-dump startup, `EMACSLOADPATH` overrides
+    `load-path`; an empty element (leading/trailing `:` or `::`) is
+    MANDATORY to splice in default `/assets/lisp` + `files/site-lisp`.
+  - Exact `startup.el` order: `android-enumerate-fonts` -> `subdirs.el`
+    / `leim-list.el` -> `android-locale-for-system-language` ->
+    **`site-run-file` (`site-start.el`, runs BEFORE `early-init.el` and
+    window-system init unless `-Q`/`--no-site-file`)** ->
+    `early-init.el` -> `package-activate-all` -> `android-win` /
+    frame creation -> `init.el` -> `android-before-splash-screen`.
+  - Corrupted `.pdmp` or broken init crashes startup; upstream
+    recovers via `EmacsPreferencesActivity` (`--quick`, `--debug-init`,
+    erase `.pdmp`) and `EmacsDocumentsProvider`.
+- **VFS & Subprocess rules (`androidvfs.c`, `android.c`)**:
+  - `/assets` (APK `lisp/`, `etc/`, `info/`) is read-only via
+    `AssetManager` (no `.` or `..`); `/content/storage/...` is SAF
+    (`android-request-directory-access`); `/content/by-authority*`
+    serves opened URIs. Subprocesses started with `default-directory`
+    in `/assets` or `/content` fall back to `HOME`.
+  - Ancillary executables ship in `jniLibs` as `lib*.so`
+    (`libemacsclient.so`, `libmovemail.so`, `libloader.so`,
+    `libexec1.so`, `libandroid-emacs.so` — Lisp must use
+    `*-program-name` variables, not hardcode names).
+  - Android 10+ blocks direct `execve()` from `app_data_file` when
+    `targetSdk >= 29`. Emacshell keeps `targetSdk=28` so direct `exec`
+    works cleanly (avoiding GNU's `libexec1.so` ptrace loader limits on
+    `process-id` and `SIGSTOP`); on API 29+ with `targetSdk >= 29`,
+    GNU uses `android-use-exec-loader`.
+  - **NEVER export `LD_LIBRARY_PATH` globally** for Termux binaries
+    (GNU Android README): Termux binaries carry `DT_RUNPATH`, and
+    `LD_LIBRARY_PATH` collides system/Termux/Emacs shared libraries.
+- **Windowing, Fonts, and Org**:
+  - Android frames map 1:1 to Activities on Android 5+; background
+    activities may be trimmed after ~4–6h; scrollbars and desktop frame
+    params (`alpha`, `undecorated`, `title`, `wait-for-wm`, etc.) are
+    unsupported.
+  - `sfnt-android` loads TrueType `.ttf` only (no OpenType/color) from
+    `/system/fonts`, `/product/fonts`, `~/fonts`.
+  - `EmacsOpenActivity` handles `org-protocol://` and `mailto:` when
+    Emacs server is running; Org provides `org-mobile-*`, Speed Keys,
+    and TTY bindings for mobile/touch workflows.
+
