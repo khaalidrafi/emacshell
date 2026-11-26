@@ -1,6 +1,7 @@
---- a/app/src/main/java/com/termux/app/TermuxInstaller.java	2026-11-26 00:00:00.000000000 +0000
-+++ b/app/src/main/java/com/termux/app/TermuxInstaller.java	2026-11-26 00:00:00.000000000 +0000
-@@ -215,6 +215,21 @@
+diff --git a/app/src/main/java/com/termux/app/TermuxInstaller.java b/app/src/main/java/com/termux/app/TermuxInstaller.java
+--- a/app/src/main/java/com/termux/app/TermuxInstaller.java
++++ b/app/src/main/java/com/termux/app/TermuxInstaller.java
+@@ -215,6 +215,22 @@ public final class TermuxInstaller {
                          throw new RuntimeException("Moving termux prefix staging to prefix directory failed");
                      }
  
@@ -19,10 +20,11 @@
 +                    // emacshell-packages release tags (the
 +                    // apt-<flavor>-v1 tags were retired 2026-11-25).
 +                    fixAptSourcesList();
- 
++
                      // Run Termux bootstrap second stage.
                      String termuxBootstrapSecondStageFile = TERMUX_PREFIX_DIR_PATH + "/etc/termux/bootstrap/termux-bootstrap-second-stage.sh";
-@@ -263,6 +278,84 @@
+                     if (!FileUtils.fileExists(termuxBootstrapSecondStageFile, false)) {
+@@ -262,6 +278,85 @@ public final class TermuxInstaller {
          }.start();
      }
  
@@ -104,6 +106,7 @@
 +            Logger.logWarnExtended(LOG_TAG, "Failed to fix apt sources.list: " + e.getMessage());
 +        }
 +    }
- 
++
      public static void showBootstrapErrorDialog(Activity activity, Runnable whenDone, String message) {
          Logger.logErrorExtended(LOG_TAG, "Bootstrap Error:\n" + message);
+ 
