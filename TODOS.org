@@ -73,9 +73,21 @@
      4 APKs + sidecars, refresh emacshell-packages-* APK assets,
      then the Owner's on-device retest (sideload, first-boot unpack,
      apt update && apt install less).
+   - [2026-11-27] FINALIZED: build dispatched with the pinned
+     bootstrap (run 45879234507 GREEN, 4 APK artifacts), release
+     v0.1.6 published (id 459803945, 4 APKs 190.8-203.6 MB + 4
+     sha256 sidecars, make_latest), emacshell-packages-v1 (228
+     assets) and emacshell-packages-distro-v1 (235) refreshed with
+     the 0.1.6 APKs (0.1.5 APK assets retired there).  Emulator
+     smoke on fix commit 9eb0e9c GREEN (first-boot extraction on
+     the new zero-copy path).  Debug branch
+     ai/debug-v015-crash--gh_google rebased onto the fix (98fda05).
+     REMAINING for DONE: the Owner's on-device retest on the Redmi
+     8A -- sideload v0.1.6 (api29), first-boot unpack, then apt
+     update && apt install less.
    :LOGBOOK:
    CLOCK: [2026-11-26 Thu 15:40]--[2026-11-26 Thu 15:41] =>  0:01
-   CLOCK: [2026-11-27 Fri 00:40]--[2026-11-27 Fri 01:10] =>  0:30
+   CLOCK: [2026-11-27 Fri 00:40]--[2026-11-27 Fri 01:06] =>  0:26
    :END:
 
 ** REVIEW v0.1.5: ready-on-install apt repo + release             :P1:
