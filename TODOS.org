@@ -18,7 +18,7 @@
 #      Asia/Dhaka) and at the close of the last active session.
 
 * ACTIVE
-** TODO v0.1.5: ready-on-install apt repo + release               :P1:
+** REVIEW v0.1.5: ready-on-install apt repo + release             :P1:
    DEADLINE: <2026-11-26 Wed 23:59 -2h>
    SCHEDULED: <2026-11-26 Wed 12:00>
    :PROPERTIES:
@@ -38,8 +38,20 @@
      bootstrap_run_id=44869748375, then tag v0.1.5 with the 4 APKs +
      sha256 sidecars and refresh the emacshell-packages-* releases
      with the new APKs.
+   - [2026-11-26] COMPLETE (facts): code landed as 9f0b9ad on
+     ai/main; build.yml run 45769328775 (workflow_dispatch,
+     bootstrap_run_id=44869748375) GREEN -- verify + all four matrix
+     jobs (termux/distro x api29/api21) success in 4m13s; release
+     v0.1.5 published (id 459054445, 8 assets: 4 signed APKs
+     190.8-203.6 MB + 4 sha256 sidecars; v2/v3 signing blocks
+     verified on all four); emacshell-packages-v1 (228 assets) and
+     emacshell-packages-distro-v1 (235 assets) refreshed with the
+     0.1.5 APKs, 0.1.4 APK assets retired there.  Remaining for
+     DONE: the Owner's on-device `apt update && apt install less'
+     on a fresh v0.1.5 install (the P0 row above).
    :LOGBOOK:
    CLOCK: [2026-11-26 Thu 12:35]--[2026-11-26 Thu 12:35] =>  0:01
+   CLOCK: [2026-11-26 Thu 12:36]--[2026-11-26 Thu 13:05] =>  0:29
    :END:
 
 ** WAITING Owner on-device onboarding: v0.1.4 + apt smoke           :P0:owner:
