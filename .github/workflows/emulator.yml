@@ -148,7 +148,22 @@ jobs:
           echo "using bootstrap run ${run_id}"
           gh run download "${run_id}" --name bootstrap-termux \
             --dir bootstrap/termux --repo "${GITHUB_REPOSITORY}"
-          ls -l bootstrap/termux/
+          gh run download "${run_id}" --name bootstrap-distro \
+            --dir bootstrap/distro --repo "${GITHUB_REPOSITORY}"
+          ls -l bootstrap/termux/ bootstrap/distro/
+          scripts/prepare-distro-rootfs.sh
+
+      - name: Download published v0.1.4/v0.1.5 release APKs for repro
+        run: |
+          set -euo pipefail
+          mkdir -p release-apks
+          curl -fSL --retry 3 -o release-apks/emacshell-termux-0.1.4-api29.apk \
+            "https://github.com/${GITHUB_REPOSITORY}/releases/download/v0.1.4/emacshell-termux-0.1.4-api29.apk"
+          curl -fSL --retry 3 -o release-apks/emacshell-termux-0.1.5-api29.apk \
+            "https://github.com/${GITHUB_REPOSITORY}/releases/download/v0.1.5/emacshell-termux-0.1.5-api29.apk"
+          curl -fSL --retry 3 -o release-apks/emacshell-distro-0.1.5-api29.apk \
+            "https://github.com/${GITHUB_REPOSITORY}/releases/download/v0.1.5/emacshell-distro-0.1.5-api29.apk"
+          ls -lh release-apks/
 
       - name: Assemble the debug APK and its androidTest APK
         run: |
@@ -164,16 +179,16 @@ jobs:
           until [ "$n" -ge 3 ]; do
             if ./gradlew --no-daemon --stacktrace -PgnuApkApi=29 \
                  assembleTermuxDebug assembleTermuxDebugAndroidTest; then
-              exit 0
+              break
             fi
             n=$((n + 1))
+            [ "$n" -lt 3 ] || { echo "::error::gradle assemble termux failed after 3 attempts"; exit 1; }
             echo "::warning::gradle assemble attempt ${n} failed; retrying in 60s"
             sleep 60
           done
-          echo "::error::gradle assemble failed after 3 attempts"
-          exit 1
+          ./gradlew --no-daemon --stacktrace -PgnuApkApi=29 assembleDistroDebug
 
-      - name: Boot the emulator and run the smoke suite
+      - name: Boot the emulator and run the smoke + diagnostic suite
         uses: reactivecircus/android-emulator-runner@v2
         with:
           # API 35 google_apis x86_64: the documented config that runs
@@ -191,13 +206,7 @@ jobs:
             -gpu swiftshader_indirect -noaudio -no-boot-anim
             -camera-back none -camera-front none
             -feature -Vulkan
-          # ONE line, on purpose: the action's parseScript() executes
-          # every line of `script:` as its own `sh -c` process, so a
-          # multi-line inline script loses all shell state between
-          # lines (run 45244076439: APP_APK empty on its check line ->
-          # "no app APK produced" right after BUILD SUCCESSFUL).  The
-          # whole suite lives in the committed POSIX script below.
-          script: sh scripts/emulator-smoke.sh
+          script: sh scripts/emulator-diag.sh
 
       - name: Upload instrumentation log
         if: always()
@@ -207,5 +216,7 @@ jobs:
           path: |
             instrumentation.log
             emacshell-logcat.txt
+            summary-diag.txt
+            *.log
           if-no-files-found: ignore
           retention-days: 14
