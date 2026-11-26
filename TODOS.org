@@ -41,8 +41,41 @@
      whether v0.1.4 still works on the same device.
    - [2026-11-26] Owner assignment: Gemini 4 Hydrogen is the Senior
      Android Developer for Emacshell and owns this row from here.
+   - [2026-11-27] GLM 5.3 audit + fix (Software Developer seat;
+     Owner order: verify/audit/finalize, Redmi 8A / AOSPA K4.19
+     Uvite Beta / Android 14).  ROOT CAUSE CONFIRMED STATIC: the
+     vendored TermuxInstaller copies the ENTIRE bootstrap zip onto
+     the Java heap (native getZip -> NewByteArray, ~100+ MB) before
+     ZipInputStream extraction; OutOfMemoryError is an Error, so the
+     catch(Exception) around extraction never contained it -- the
+     first fresh-install extraction on a 2 GB device kills the
+     worker thread.  v0.1.4 carries the same code but was never
+     fresh-installed on that device, which is why the crash first
+     surfaced with v0.1.5.  FIX LANDED on ai/main: (1) manifest
+     android:largeHeap="true" (patch 0007); (2) direct ByteBuffer
+     over the .so's .rodata + ByteBufferInputStream streaming, JNI
+     NewDirectByteBuffer -- zero heap copy (patch 0008);
+     (3) fixAptSourcesList reads via BufferedReader/
+     InputStreamReader/FileInputStream -- java.nio.file.Files was
+     API 26+ and on the api-21 variant floor (API 24/25) its
+     NoSuchMethodError would ALSO have escaped the catch (0008);
+     (4) asset audit: every bundled asset is read via
+     AssetManager.open() streaming (no openFd), so compression
+     rules are safe as shipped.  SERIES REPAIR in the same pass:
+     0004 had been regenerated with a one-space context indent and
+     could never re-apply, and the elwidget manifest receivers +
+     HelpActivity SDK-stubs fix were missing from patches/termux
+     entirely; sync-termux.sh now reproduces the vendored tree
+     exactly (verified end to end against the pin), check.sh 43/43.
+     Version bumped 0.1.6 (versionCode +7) so the fixed APKs cannot
+     collide with the crashing v0.1.5 release.  NEXT: dispatch
+     build.yml (bootstrap_run_id=44869748375), tag v0.1.6 with the
+     4 APKs + sidecars, refresh emacshell-packages-* APK assets,
+     then the Owner's on-device retest (sideload, first-boot unpack,
+     apt update && apt install less).
    :LOGBOOK:
    CLOCK: [2026-11-26 Thu 15:40]--[2026-11-26 Thu 15:41] =>  0:01
+   CLOCK: [2026-11-27 Fri 00:40]--[2026-11-27 Fri 01:10] =>  0:30
    :END:
 
 ** REVIEW v0.1.5: ready-on-install apt repo + release             :P1:

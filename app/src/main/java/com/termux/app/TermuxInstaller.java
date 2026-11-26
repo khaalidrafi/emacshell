@@ -25,10 +25,12 @@ import com.termux.shared.termux.TermuxConstants;
 import com.termux.shared.termux.TermuxUtils;
 
 import java.io.BufferedReader;
-import java.io.ByteArrayInputStream;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.zip.ZipEntry;
@@ -154,8 +156,13 @@ public final class TermuxInstaller {
                     final byte[] buffer = new byte[8096];
                     final List<Pair<String, String>> symlinks = new ArrayList<>(50);
 
-                    final byte[] zipBytes = loadZipBytes();
-                    try (ZipInputStream zipInput = new ZipInputStream(new ByteArrayInputStream(zipBytes))) {
+                    // Stream the bootstrap zip straight off the shared
+                    // library's .rodata via a direct ByteBuffer.  The
+                    // v0.1.5 heap-copy of the whole zip (~100 MB byte[])
+                    // is what exhausted the heap on low-RAM devices
+                    // (Redmi 8A class) during first-boot extraction.
+                    final ByteBuffer zipBytes = loadZipBytes();
+                    try (ZipInputStream zipInput = new ZipInputStream(new ByteBufferInputStream(zipBytes))) {
                         ZipEntry zipEntry;
                         while ((zipEntry = zipInput.getNextEntry()) != null) {
                             if (zipEntry.getName().equals("SYMLINKS.txt")) {
@@ -316,8 +323,13 @@ public final class TermuxInstaller {
             boolean staleReplaced = false;
             boolean repoLinePresent = false;
             if (sources.isFile()) {
-                try (BufferedReader reader =
-                        java.nio.file.Files.newBufferedReader(sources.toPath())) {
+                // BufferedReader over an InputStreamReader (not
+                // java.nio.file.Files.newBufferedReader, which is API 26+;
+                // the api-21 variant floor is API 24 and the raised
+                // NoSuchMethodError is an Error, so the try/catch below
+                // would NOT stop it from killing the bootstrap thread).
+                try (BufferedReader reader = new BufferedReader(
+                        new InputStreamReader(new FileInputStream(sources), "UTF-8"))) {
                     String line;
                     while ((line = reader.readLine()) != null) {
                         if (line.startsWith("deb ")
@@ -452,12 +464,41 @@ public final class TermuxInstaller {
         return FileUtils.createDirectoryFile(directory.getAbsolutePath());
     }
 
-    public static byte[] loadZipBytes() {
+    public static ByteBuffer loadZipBytes() {
         // Only load the shared library when necessary to save memory usage.
         System.loadLibrary("termux-bootstrap");
         return getZip();
     }
 
-    public static native byte[] getZip();
+    public static native ByteBuffer getZip();
+
+    /**
+     * Streams a read-only direct ByteBuffer (the .rodata bootstrap zip)
+     * without ever copying it onto the Java heap.  ZipInputStream only
+     * reads, never writes, the buffer.
+     */
+    private static class ByteBufferInputStream extends InputStream {
+        private final ByteBuffer byteBuffer;
+
+        ByteBufferInputStream(ByteBuffer byteBuffer) {
+            this.byteBuffer = byteBuffer;
+        }
+
+        @Override
+        public int read() {
+            if (!byteBuffer.hasRemaining())
+                return -1;
+            return byteBuffer.get() & 0xFF;
+        }
+
+        @Override
+        public int read(byte[] buffer, int offset, int length) {
+            if (!byteBuffer.hasRemaining())
+                return -1;
+            int readLength = Math.min(length, byteBuffer.remaining());
+            byteBuffer.get(buffer, offset, readLength);
+            return readLength;
+        }
+    }
 
 }

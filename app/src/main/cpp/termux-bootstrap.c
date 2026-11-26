@@ -3,9 +3,11 @@
 extern jbyte blob[];
 extern int blob_size;
 
-JNIEXPORT jbyteArray JNICALL Java_com_termux_app_TermuxInstaller_getZip(JNIEnv *env, __attribute__((__unused__)) jobject This)
+/* Return a direct ByteBuffer over the .rodata bootstrap zip instead
+ * of copying it into a Java byte[]: the copy is what exhausts the
+ * heap on low-RAM devices during first-boot extraction.  The Java
+ * side only ever reads the buffer (ByteBufferInputStream). */
+JNIEXPORT jobject JNICALL Java_com_termux_app_TermuxInstaller_getZip(JNIEnv *env, __attribute__((__unused__)) jobject This)
 {
-    jbyteArray ret = (*env)->NewByteArray(env, blob_size);
-    (*env)->SetByteArrayRegion(env, ret, 0, blob_size, blob);
-    return ret;
+    return (*env)->NewDirectByteBuffer(env, (void *) blob, (jlong) blob_size);
 }

@@ -68,6 +68,7 @@
         android:hasFragileUserData="true"
         android:icon="@mipmap/emacshell_icon"
         android:label="@string/application_name"
+        android:largeHeap="true"
         android:requestLegacyExternalStorage="true"
         android:roundIcon="@mipmap/emacshell_icon"
         android:supportsRtl="false"
