@@ -173,8 +173,10 @@ Emacshell's own repository serves the same packages rebuilt for
 this prefix (GitHub Releases, absolute-URL flat repo; see
 packages.yml in the emacshell repo).
 
-Only touches sources.list when it currently points upstream or at
-a retired repo tag; idempotent; the original line is preserved
+Touches sources.list only when it names an upstream or retired
+repository, or when the emacshell repository line is missing
+entirely (Owner order 2026-11-26: ready on install, no manual
+repair step); idempotent; the original line is preserved
 (commented out) above the replacement.  Returns non-nil when the
 file was changed."
   (interactive (list nil))
@@ -188,9 +190,11 @@ file was changed."
                       (insert-file-contents file)
                       (split-string (buffer-string) "\n" t)))
              (needs-fix
-              ;; a stale repo line present, our line absent
-              (and (cl-some #'emacshell--stale-repo-p lines)
-                   (not (member repo-line lines))))
+              ;; a stale repo line present, or our line absent
+              ;; (every install must end up with a working `pkg':
+              ;; "ready on install", Owner order 2026-11-26)
+              (or (cl-some #'emacshell--stale-repo-p lines)
+                  (not (member repo-line lines))))
              (changed nil))
         (when (and (not (string= (emacshell-package-name) "com.termux"))
                    needs-fix)
@@ -206,7 +210,14 @@ file was changed."
                         (insert repo-line "\n")
                         (setq inserted t))
                       (setq changed t))
-                  (insert line "\n")))))
+                  (insert line "\n")))
+              ;; No stale line carried the replacement and the
+              ;; emacshell repo line is absent entirely: append it,
+              ;; so every install ends up with a working `pkg'.
+              (unless (or inserted (member repo-line lines))
+                (insert "# emacshell: this app's own repository (added by termux-fix-repo)\n")
+                (insert repo-line "\n")
+                (setq changed t))))
           (when changed
             (unless quiet
               (message "termux-fix-repo: %s now uses the emacshell repo"
@@ -317,12 +328,14 @@ with an explanation in the buffer."
       (eq 0 rc))))
 
 (defun emacshell-maybe-fix-repo ()
-  "Startup hook: fix sources.list when it still points upstream.
+  "Startup hook: make sure apt points at the emacshell repository.
 Called from site-start.el for every interactive Emacs the app
 starts; batch Emacs is left alone.  Cheap (one file read) and fully
-idempotent -- a user who deliberately re-adds an upstream line is
-not fought with: only the exact upstream default lines are ever
-rewritten, and they are preserved as comments."
+idempotent -- the emacshell repository line is ensured on every
+install ("ready on install", Owner order 2026-11-26), stale
+upstream/retired lines are rewritten (preserved as comments), and
+a user who deliberately re-adds an upstream line is not fought
+with beyond the exact default lines."
   (unless (or noninteractive
               (string= (emacshell-package-name) "com.termux"))
     (ignore-errors

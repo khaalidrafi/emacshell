@@ -102,7 +102,11 @@ first. On first launch:
 1. Emacs starts immediately;
 2. a progress dialog unpacks the bootstrap into the app's private
    storage (no storage permission needed);
-3. **Emacshell (Distro) only**: the bundled Alpine rootfs is staged
+3. `pkg`/`apt` are ready the moment the unpack finishes — the
+   emacshell-packages repository is written into
+   `$PREFIX/etc/apt/sources.list` at install time (v0.1.5+; no manual
+   fix-repo step);
+4. **Emacshell (Distro) only**: the bundled Alpine rootfs is staged
    for proot-distro in the background; `M-x emacshell-distro-login`
    becomes available when it finishes.
 
@@ -156,15 +160,22 @@ deb [trusted=yes] https://github.com/khaalidrafi/emacshell/releases/download/ema
 still name them are migrated automatically). The repo release also
 carries the current APKs — one release is everything a flavor needs.
 
-Devices point at it automatically: `TermuxInstaller` writes the line
-at bootstrap time, and older installs get repaired by
-`M-x termux-fix-repo` (which also runs from `site-start.el` at
-startup). If `pkg upgrade` ever misbehaves after an upstream-repo
-excursion, `M-x termux-repair` is the one-shot fix: it repoints the
-repo, purges poisoned cached `.deb`s, and runs `apt-get update` +
-`apt-get -f install` (dropping `dpkg-perl` — whose upstream
-`perl, clang, make` toolchain dependencies have no business on a
-phone — if that is what blocks the repair).
+**Ready on install** (v0.1.5, Owner order 2026-11-26: "I don't
+wanna run fix repo. I want to have it ready on install"). Three
+layers agree, so no manual repair step is ever needed on a fresh
+install: the bootstrap zip itself is born pointing at
+emacshell-packages (patch 7 in `scripts/build-bootstrap.sh`, applied
+to the produced zip at build time), `TermuxInstaller.fixAptSourcesList`
+writes the repository line unconditionally when the prefix lands, and
+`site-start.el` re-checks it at every interactive Emacs start for
+installs whose bootstrap predates the fix (`M-x termux-fix-repo` is
+the manual form of the same idempotent fix). If `pkg upgrade` ever
+misbehaves after an upstream-repo excursion, `M-x termux-repair` is
+the one-shot fix: it repoints the repo, purges poisoned cached
+`.deb`s, and runs `apt-get update` + `apt-get -f install` (dropping
+`dpkg-perl` — whose upstream `perl, clang, make` toolchain
+dependencies have no business on a phone — if that is what blocks the
+repair).
 
 Scope: the repository serves the bootstrap package set (the ~100
 essentials). Anything beyond it can be added by re-running the

@@ -138,7 +138,7 @@ fi
 echo "Building the '${flavor}' bootstrap (TERMUX_APP__PACKAGE_NAME=${app_id}) from ${src}"
 
 # --- patch the pinned tree for emacshell (idempotent, fail-loud) ---------------
-# SIX deliberate deviations from the pinned tree, re-applied on every
+# SEVEN deliberate deviations from the pinned tree, re-applied on every
 # clone.  A future pin bump that changes these lines FAILS here,
 # forcing a deliberate re-review instead of silently shipping (see
 # REVIEW.org 'Bootstrap upstream patches').
@@ -334,6 +334,40 @@ fi
 out_dir="bootstrap/${flavor}"
 mkdir -p "${out_dir}"
 cp -f "${zip_path}" "${out_dir}/bootstrap-${ARCH}.zip"
+
+# Patch 7 (applied to the PRODUCT, not the tree): rewrite
+# etc/apt/sources.list inside the produced bootstrap so the prefix is
+# BORN pointing at the emacshell-packages repository.  The bootstrap's
+# apt package ships the upstream termux-main line; on device,
+# TermuxInstaller.fixAptSourcesList rewrites it at install time and
+# site-start.el repairs older installs, but Owner order 2026-11-26
+# ("I don't wanna run fix repo. I want to have it ready on install")
+# makes the bootstrap itself carry the right line from birth -- all
+# three layers agree, and a future regression in any one still leaves
+# the other two.  The zip entry is replaced in place; the sha256 below
+# is computed AFTER the rewrite, so the pin commits the rewritten zip.
+repo_tag="emacshell-packages-v1"
+if [ "${flavor}" != "termux" ]; then
+    repo_tag="emacshell-packages-${flavor}-v1"
+fi
+rewrite_dir="$(mktemp -d)"
+mkdir -p "${rewrite_dir}/etc/apt"
+{
+    echo "# emacshell: this app's own repository (written into the bootstrap at build time; upstream repos are com.termux-prefixed)."
+    echo "deb [trusted=yes] https://github.com/khaalidrafi/emacshell/releases/download/${repo_tag} ./"
+} > "${rewrite_dir}/etc/apt/sources.list"
+(
+    cd "${rewrite_dir}"
+    zip --quiet "${ROOT}/${out_dir}/bootstrap-${ARCH}.zip" etc/apt/sources.list
+)
+rm -rf "${rewrite_dir}"
+# fail-loud: the entry must now carry the emacshell repository
+if ! unzip -p "${out_dir}/bootstrap-${ARCH}.zip" etc/apt/sources.list \
+        | grep -q "releases/download/${repo_tag}"; then
+    echo "error: the bootstrap's etc/apt/sources.list does not name the ${repo_tag} repository (zip rewrite failed)" >&2
+    exit 1
+fi
+
 hash="$(sha256sum "${out_dir}/bootstrap-${ARCH}.zip" | awk '{print $1}')"
 
 echo

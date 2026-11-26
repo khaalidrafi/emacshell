@@ -18,6 +18,29 @@
 #      Asia/Dhaka) and at the close of the last active session.
 
 * ACTIVE
+** TODO v0.1.5: ready-on-install apt repo + release               :P1:
+   DEADLINE: <2026-11-26 Wed 23:59 -2h>
+   SCHEDULED: <2026-11-26 Wed 12:00>
+   :PROPERTIES:
+   :EFFORT:   1:30
+   :END:
+   - [2026-11-26] Owner order: "I don't wanna run fix repo. I want to
+     have it ready on install."  Landed on ai/main: (1)
+     TermuxInstaller.fixAptSourcesList now writes the
+     emacshell-packages line UNCONDITIONALLY (missing/empty
+     sources.list included); (2) termux-fix-repo / site-start ensure
+     the same on the Elisp side; (3) build-bootstrap.sh patch 7
+     rewrites etc/apt/sources.list inside the produced bootstrap zip
+     (next bootstrap build = fresh pin, by design); (4) patches/
+     termux/0004 regenerated (it had drifted from the vendored
+     TermuxInstaller since b7459ad); (5) version 0.1.5, README/
+     REVIEW updated.  NEXT: build.yml dispatch with
+     bootstrap_run_id=44869748375, then tag v0.1.5 with the 4 APKs +
+     sha256 sidecars and refresh the emacshell-packages-* releases
+     with the new APKs.
+   :LOGBOOK:
+   CLOCK: [2026-11-26 Thu 12:35]--[2026-11-26 Thu 12:35] =>  0:01
+   :END:
 
 ** WAITING Owner on-device onboarding: v0.1.4 + apt smoke           :P0:owner:
    DEADLINE: <2026-11-25 Wed 12:00 -6h>
@@ -31,6 +54,12 @@
      long-OPEN on-device test).  Seat owes the Owner a one-message
      onboarding walkthrough the moment the tag is verified.
    - [2026-11-25] UNBLOCKED by the green lane: tags verified 2026-11-24. Onboarding walkthrough delivered to the Owner (Discord): sideload the v0.1.4 APK, M-x termux-fix-repo, then apt update && apt install less.
+   - [2026-11-26] SUPERSEDED by the v0.1.5 ready-on-install work (see
+     the P1 row below): the Owner rejected the fix-repo step
+     ("I don't wanna run fix repo. I want to have it ready on
+     install"), so the walkthrough is now: sideload the v0.1.5 APK,
+     wait for the first-boot unpack, then `apt update && apt install
+     less` -- nothing else, the repo line is written at install time.
    :LOGBOOK:
    CLOCK: [2026-11-25 Wed 10:09]--[2026-11-25 Wed 10:09] =>  0:01
    :END:
