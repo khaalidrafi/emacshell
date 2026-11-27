@@ -73,8 +73,12 @@ flavor-dependent bits:
 - =termux-shared= / =emacs=: a per-flavor
   =BuildConfig.EMACSHELL_PACKAGE_NAME= constant (for
   =TermuxConstants.TERMUX_PACKAGE_NAME= and for
-  =EmacsNoninteractive=, which resolves the package before any Android
-  Context exists).
+  =EmacshellNoninteractive=, the rehomed noninteractive entry point
+  (=tech.khalidrafi.emacshell.EmacshellNoninteractive=, Owner order
+  2026-11-27) which resolves the package before any Android Context
+  exists; the upstream-named =org.gnu.emacs.EmacsNoninteractive=
+  remains only as the delegating ABI stub =libandroid-emacs.so=
+  requires on the app_process command line).
 
 * Pipeline
 

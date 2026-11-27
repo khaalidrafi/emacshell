@@ -151,7 +151,7 @@
    CLOCK: [2026-11-25 Wed 10:09]--[2026-11-25 Wed 10:09] =>  0:01
    :END:
 
-** TODO class-name decision correction -- Emacshell + Khalid Rafi  :P1:rename:
+** REVIEW class-name decision correction -- Emacshell + Khalid Rafi  :P1:rename:
    SCHEDULED: <2026-11-27 Fri 07:30>
    DEADLINE: <2026-11-27 Fri 23:59 -6h>
    :PROPERTIES:
@@ -191,12 +191,27 @@
      The other 40 org.gnu.emacs classes CANNOT move without an Emacs
      C rebuild (JNI descriptors in libemacs.so) -- that stays law and
      the rewritten decision must say so explicitly.
+   - [2026-11-27] LANDED per plan: real implementation rehomed to
+     tech.khalidrafi.emacshell.EmacshellNoninteractive (package +
+     imports + class + loadClass target all carry the Emacshell /
+     Khalid Rafi name); org.gnu.emacs.EmacsNoninteractive is now the
+     documented delegating ABI stub (libandroid-emacs.so names it on
+     the app_process command line -- it cannot move under the
+     no-C-rebuild law).  patch-emacs-java.py gained the REHOME step
+     (asserted transforms, regenerated on every vendoring run;
+     --check verifies stub byte-exactness + rehomed markers);
+     BUILD.org + emacs/build.gradle comments updated.  check.sh
+     43/43 GREEN.  NOTE: the other 40 org.gnu.emacs classes stay
+     (JNI descriptors inside libemacs.so) -- now documented as an
+     ABI fact, not a naming preference.  APK impact: classes.dex
+     only; needs a build.yml dispatch + release (next version)
+     before it reaches the Owner's device.
    :LOGBOOK:
-   CLOCK: [2026-11-27 Fri 07:15]
+   CLOCK: [2026-11-27 Fri 07:15]--[2026-11-27 Fri 07:45] =>  0:30
    :END:
 
 ** TODO pkg upgrade on EXISTING installs: dpkg-perl still poisons   :P1:apt:
-   SCHEDULED: <2026-11-27 Fri 07:30>
+   SCHEDULED: <2026-11-27 Fri 07:30]
    DEADLINE: <2026-11-27 Fri 23:59 -6h>
    :PROPERTIES:
    :EFFORT:   0:40

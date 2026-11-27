@@ -15,8 +15,13 @@ This script:
   2. Applies an exact, asserted series of string replacements (below in
      PATCHES) that replace the hardcoded package name with either
      getPackageName() (when a Context is in scope) or the per-flavor
-     BuildConfig constant EMACSHELL_PACKAGE_NAME (only for
-     EmacsNoninteractive, which runs before any Context exists).
+     BuildConfig constant EMACSHELL_PACKAGE_NAME (only for the
+     noninteractive entry point, which runs before any Context exists).
+  3. Rehomes EmacsNoninteractive to
+     tech.khalidrafi.emacshell.EmacshellNoninteractive (Owner order
+     2026-11-27: the class name carries Emacshell and Khalid Rafi),
+     leaving the upstream-named file as a delegating ABI stub required
+     by libandroid-emacs.so (see the decision block below).
 
 Every replacement must occur the exact expected number of times or the
 script fails loudly; a silent miss would break the app at runtime in
@@ -66,10 +71,19 @@ from pathlib import Path
 #     non-exported receiver; not a global namespace.  The manifest
 #     declares the same literal, so sender and receiver stay in sync.
 #
-#   EmacsNoninteractive.java:214  loadClass ("org.gnu.emacs.EmacsNoninteractive")
-#     This is a JAVA CLASS name, not an applicationId lookup.  emacshell
-#     keeps the org.gnu.emacs java package for the Emacs classes, so this
-#     string is correct as-is; patching it would break class loading.
+# EmacsNoninteractive is NOT kept as-is: it is REHOMED (Owner order
+# 2026-11-27: the class name carries Emacshell and Khalid Rafi).
+# The real implementation lives at
+# tech/khalidrafi.emacshell.EmacshellNoninteractive (see REHOME below);
+# org.gnu.emacs.EmacsNoninteractive survives ONLY as a delegating stub
+# whose main() forwards to the emacshell class.  The stub exists for
+# exactly one reason: libandroid-emacs.so (never rebuilt; DESIGN.org
+# "No Emacs C rebuild, ever") hardcodes the upstream class name on the
+# app_process command line it uses to start noninteractive Emacs --
+# renaming or removing the stub breaks `emacs --batch'.  The other
+# org.gnu.emacs classes cannot be rehomed for the same ABI reason:
+# libemacs.so reaches them through JNI FindClass("org/gnu/emacs/...")
+# descriptors compiled into the C code.
 # ---------------------------------------------------------------------------
 
 PATCHES = [
@@ -157,6 +171,120 @@ FORBIDDEN_RAW = [
 ]
 
 
+# The rehoming of EmacsNoninteractive (Owner order 2026-11-27): the
+# real implementation moves to tech.khalidrafi.emacshell.Emacshell-
+# Noninteractive and the upstream file becomes a delegating stub
+# (see the decision block above for the ABI reason).
+REHOME_SRC = "EmacsNoninteractive.java"
+REHOME_PACKAGE = "tech.khalidrafi.emacshell"
+REHOME_DIR = "tech/khalidrafi/emacshell"
+REHOME_CLASS = "EmacshellNoninteractive"
+REHOME_FQN = "tech.khalidrafi.emacshell.EmacshellNoninteractive"
+REHOME_LOAD_OLD = '= classLoader.loadClass ("org.gnu.emacs.EmacsNoninteractive");'
+REHOME_LOAD_NEW = ('= classLoader.loadClass\n'
+                   '\t  ("tech.khalidrafi.emacshell.EmacshellNoninteractive");')
+
+REHOME_STUB = '''/* Communication module for Android terminals.  -*- c-file-style: "GNU" -*-
+
+Copyright (C) 2023-2026 Free Software Foundation, Inc.
+
+This file is part of GNU Emacs.
+
+GNU Emacs is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or (at
+your option) any later version.
+
+GNU Emacs is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
+
+package org.gnu.emacs;
+
+/* Upstream entry-point STUB (emacshell rehoming, Owner order
+   2026-11-27).  libandroid-emacs.so -- the GNU native helper that
+   emacshell never rebuilds (DESIGN.org "No Emacs C rebuild, ever")
+   -- hardcodes THIS class name on the app_process command line it
+   uses to start noninteractive Emacs, so the name cannot change.
+   The real implementation lives in the emacshell namespace:
+   tech.khalidrafi.emacshell.EmacshellNoninteractive.  This stub's
+   only job is to forward `main' to it; both classes live in the
+   same classes.dex, so the system class loader that loads this stub
+   resolves the emacshell class through the same class path.  */
+
+public final class EmacsNoninteractive
+{
+  public static void
+  main (String[] args)
+  {
+    tech.khalidrafi.emacshell.EmacshellNoninteractive.main (args);
+  }
+}
+'''
+
+
+def rehome_noninteractive(java_out: Path, out_root: Path) -> None:
+    """Move the noninteractive entry point to the emacshell namespace.
+
+    Reads the just-string-patched org/gnu/emacs/EmacsNoninteractive.java,
+    produces tech/khalidrafi/emacshell/EmacshellNoninteractive.java from
+    it, and replaces the upstream file with the delegating ABI stub.
+    Every transformation is asserted so a drifting upstream fails
+    loudly instead of producing a broken tree.
+    """
+    src = java_out / REHOME_SRC
+    text = src.read_text()
+
+    def must_count(needle: str, expected: int) -> None:
+        count = text.count(needle)
+        if count != expected:
+            raise SystemExit(
+                f"error: rehome: {REHOME_SRC}: expected {expected} "
+                f"occurrence(s) of {needle!r}, found {count}")
+
+    must_count("package org.gnu.emacs;\n", 1)
+    text = text.replace(
+        "package org.gnu.emacs;\n",
+        f"package {REHOME_PACKAGE};\n\n"
+        "import org.gnu.emacs.BuildConfig;\n"
+        "import org.gnu.emacs.EmacsApplication;\n"
+        "import org.gnu.emacs.EmacsNative;\n"
+        "import org.gnu.emacs.EmacsService;\n",
+        1,
+    )
+    must_count("public final class EmacsNoninteractive", 1)
+    text = text.replace("public final class EmacsNoninteractive",
+                        f"public final class {REHOME_CLASS}", 1)
+    text = text.replace("an instance of `EmacsNoninteractive' loaded",
+                        f"an instance of `{REHOME_CLASS}' loaded", 1)
+    must_count(REHOME_LOAD_OLD, 1)
+    text = text.replace(REHOME_LOAD_OLD, REHOME_LOAD_NEW, 1)
+    text = text.replace(
+        "/* Noninteractive Emacs.\n",
+        "/* Noninteractive Emacs -- emacshell rehoming (Owner order\n"
+        "   2026-11-27: the class name carries Emacshell and Khalid Rafi).\n"
+        "   The real implementation of the noninteractive entry point; the\n"
+        "   upstream-named org.gnu.emacs.EmacsNoninteractive survives ONLY as\n"
+        "   a delegating stub because libandroid-emacs.so (never rebuilt;\n"
+        "   DESIGN.org \"No Emacs C rebuild, ever\") hardcodes that class name\n"
+        "   on the app_process command line.\n\n"
+        "   Original upstream comment follows.\n\n",
+        1,
+    )
+
+    dst_dir = out_root / "java" / REHOME_DIR
+    shutil.rmtree(out_root / "java" / "tech", ignore_errors=True)
+    dst_dir.mkdir(parents=True, exist_ok=True)
+    (dst_dir / f"{REHOME_CLASS}.java").write_text(text)
+    src.write_text(REHOME_STUB)
+    print(f"rehomed {REHOME_SRC} -> {REHOME_DIR}/{REHOME_CLASS}.java "
+          f"(+ upstream-named ABI stub)")
+
+
 def extract_java_dir(tarball: Path, tmpdir: Path) -> Path:
     """Extract <tarball>/emacs-<ver>/java into tmpdir, return java/ path."""
     with tarfile.open(tarball, "r:xz") as tar:
@@ -237,13 +365,21 @@ def main() -> int:
         total_changed_lines += expected
         print(f"patched {filename}: {expected} site(s)")
 
+    # Rehome the noninteractive entry point to the emacshell namespace
+    # (Owner order 2026-11-27) BEFORE the forbidden-leftover check, so
+    # the check sees the final tree.
+    rehome_noninteractive(java_out, args.out)
+
     # Post-condition: no obviously unpatched lookup remains.
     failures = 0
-    for filename, _, _, _ in PATCHES:
-        text = (java_out / filename).read_text()
+    post_rehome_files = [java_out / filename for filename, _, _, _ in PATCHES]
+    post_rehome_files.append(out / "java" / REHOME_DIR / f"{REHOME_CLASS}.java")
+    for path in post_rehome_files:
+        text = path.read_text()
         for bad in FORBIDDEN_RAW:
             if bad in text:
-                print(f"error: {filename} still contains raw form {bad!r}",
+                n = path.name
+                print(f"error: {n} still contains raw form {bad!r}",
                       file=sys.stderr)
                 failures += 1
     if failures:
@@ -265,7 +401,13 @@ def check_only(out: Path) -> int:
         return 1
     ok = True
     for filename, old, new, expected in PATCHES:
-        text = (java_out / filename).read_text()
+        # After the rehome, EmacsNoninteractive.java in org/gnu/emacs is
+        # the delegating stub; its string-patched CONTENT lives on in the
+        # rehomed class, so that is what must carry the patched forms.
+        if filename == REHOME_SRC:
+            text = (out / "java" / REHOME_DIR / f"{REHOME_CLASS}.java").read_text()
+        else:
+            text = (java_out / filename).read_text()
         have_new = text.count(new)
         have_old = text.count(old)
         if have_new < expected or have_old > 0:
@@ -274,6 +416,33 @@ def check_only(out: Path) -> int:
             ok = False
         else:
             print(f"ok   {filename}: {have_new} patched site(s)")
+
+    # Rehome verification: the stub must be exactly the expected stub
+    # and the emacshell class must carry the rehomed markers.
+    stub = java_out / REHOME_SRC
+    if stub.read_text() != REHOME_STUB:
+        print(f"FAIL {REHOME_SRC}: not the expected delegating ABI stub",
+              file=sys.stderr)
+        ok = False
+    else:
+        print(f"ok   {REHOME_SRC}: delegating ABI stub")
+    rehomed = out / "java" / REHOME_DIR / f"{REHOME_CLASS}.java"
+    if not rehomed.is_file():
+        print(f"FAIL {REHOME_DIR}/{REHOME_CLASS}.java: missing (rehome not run)",
+              file=sys.stderr)
+        ok = False
+    else:
+        rtext = rehomed.read_text()
+        markers = [f"package {REHOME_PACKAGE};",
+                   f"public final class {REHOME_CLASS}",
+                   REHOME_LOAD_NEW]
+        missing = [m for m in markers if m not in rtext]
+        if missing or REHOME_LOAD_OLD in rtext:
+            print(f"FAIL {REHOME_CLASS}.java: markers missing {missing} "
+                  f"or raw upstream loadClass remains", file=sys.stderr)
+            ok = False
+        else:
+            print(f"ok   {REHOME_CLASS}.java: rehomed implementation")
     return 0 if ok else 1
 
 

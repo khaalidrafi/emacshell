@@ -41,7 +41,8 @@ android {
     }
 
     // The flavors exist ONLY to compile a per-flavor BuildConfig constant
-    // for EmacsNoninteractive, which resolves the application package
+    // for EmacshellNoninteractive (tech.khalidrafi.emacshell, the rehomed
+    // noninteractive entry point), which resolves the application package
     // before any Android Context exists and therefore cannot call
     // Context.getPackageName().  Everything else in the Emacs layer uses
     // getPackageName() at runtime (see scripts/patch-emacs-java.py).
