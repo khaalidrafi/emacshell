@@ -409,6 +409,33 @@ with an explanation in the buffer."
         (message "termux-repair: FAILED (details in *termux-repair*)"))
       (eq 0 rc))))
 
+(defun emacshell-maybe-purge-dpkg-perl ()
+  "Startup hook: drop dpkg-perl when its unshipped deps poison apt.
+Upstream's dpkg-perl subpackage declares Depends: perl, clang, make
+-- a toolchain the bootstrap never ships -- so any install whose
+dpkg status database still lists it (upgrades from v0.1.4-era
+bootstraps) dies on every `pkg upgrade' with `dpkg-perl: Depends:
+clang but it is not installed' until the subpackage is removed.
+Fresh installs are immune (build-bootstrap patch 4 never packs it).
+Called from site-start.el for every interactive Emacs; a no-op --
+one status-DB read -- once the install is clean."
+  (unless (or noninteractive
+              (string= (emacshell-package-name) "com.termux"))
+    (ignore-errors
+      (let ((status (expand-file-name "var/lib/dpkg/status"
+                                      (emacshell-prefix)))
+            (dpkg (expand-file-name "bin/dpkg" (emacshell-prefix))))
+        (when (and (file-readable-p status)
+                   (file-executable-p dpkg)
+                   (with-temp-buffer
+                     (insert-file-contents-literally status)
+                     (goto-char (point-min))
+                     (re-search-forward "^Package: dpkg-perl$" nil t)))
+          (when (eq 0 (call-process dpkg nil nil nil
+                                    "--remove" "dpkg-perl"))
+            (message "emacshell: removed dpkg-perl (its toolchain \
+deps are not shipped); pkg upgrade works again")))))))
+
 (defun emacshell-maybe-fix-repo ()
   "Startup hook: make sure apt points at the emacshell repository.
 Called from site-start.el for every interactive Emacs the app

@@ -210,7 +210,7 @@
    CLOCK: [2026-11-27 Fri 07:15]--[2026-11-27 Fri 07:45] =>  0:30
    :END:
 
-** TODO pkg upgrade on EXISTING installs: dpkg-perl still poisons   :P1:apt:
+** REVIEW pkg upgrade on EXISTING installs: dpkg-perl still poisons   :P1:apt:
    SCHEDULED: <2026-11-27 Fri 07:30]
    DEADLINE: <2026-11-27 Fri 23:59 -6h>
    :PROPERTIES:
@@ -234,8 +234,17 @@
      an idempotent emacshell-maybe-purge-dpkg-perl (only when the
      status DB lists dpkg-perl: run dpkg --remove dpkg-perl, cheap,
      side-effect-free otherwise); ships with the next APK.
+   - [2026-11-27] LANDED: emacshell-maybe-purge-dpkg-perl added to
+     emacshell.el and wired into site-start.el after the repo fixup
+     (interactive sessions only; one status-DB read when clean;
+     dpkg --remove dpkg-perl only when the status DB still lists it;
+     success message tells the Owner pkg upgrade works again).
+     Paren-balance verified + check.sh 43/43 GREEN (no emacs in this
+     sandbox for byte-compile; the function mirrors the proven
+     termux-repair dpkg call).  Ships with the NEXT APK (v0.1.7+);
+     for TODAY on v0.1.6 the Owner relief is M-x termux-repair once.
    :LOGBOOK:
-   CLOCK: [2026-11-27 Fri 07:15]
+   CLOCK: [2026-11-27 Fri 07:15]--[2026-11-27 Fri 08:00] =>  0:45
    :END:
 
 ** DONE emacshell-packages: rename the apt repo, ship the APK with it :P1:
