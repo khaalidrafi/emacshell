@@ -612,8 +612,19 @@ public final class TermuxConstants {
 
 
 
-    /** Termux app $HOME directory path */
-    public static final String TERMUX_HOME_DIR_PATH = TERMUX_FILES_DIR_PATH + "/home"; // Default: "/data/data/com.termux/files/home"
+    /** Termux app $HOME directory path.
+
+        Emacshell change vs upstream: upstream Termux uses files/home, but
+        the Android port of Emacs sets HOME to the files directory itself.
+        Termux sessions and the Emacs process must share ONE home so that
+        they stay in sync: ~/.emacs.d, ~/storage (termux-setup-storage)
+        and every file a term session writes are visible to both sides
+        at the same paths.  Everything derived from this constant
+        (.termux/, .config/termux, ~/storage, termux.properties) follows
+        automatically.  Installs that predate this change keep their old
+        files/home directory (nothing deletes it); its contents can be
+        moved into ~ once manually. */
+    public static final String TERMUX_HOME_DIR_PATH = TERMUX_FILES_DIR_PATH; // Emacshell: "/data/data/<pkg>/files" (same as Emacs HOME); upstream Termux: "/data/data/com.termux/files/home"
     /** Termux app $HOME directory */
     public static final File TERMUX_HOME_DIR = new File(TERMUX_HOME_DIR_PATH);
 

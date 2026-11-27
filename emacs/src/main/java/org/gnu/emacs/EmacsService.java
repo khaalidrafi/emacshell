@@ -189,16 +189,16 @@ public final class EmacsService extends Service
       {
 	tem = getSystemService (Context.NOTIFICATION_SERVICE);
 	manager = (NotificationManager) tem;
-	infoBlurb = ("This notification is displayed to keep Emacs"
+	infoBlurb = ("This notification is displayed to keep Emacshell"
 		     + " running while it is in the background.  You"
 		     + " may disable it if you wish;"
 		     + " see (emacs)Android Environment.");
 	channel
-	  = new NotificationChannel ("emacs", "Emacs Background Service",
+	  = new NotificationChannel ("emacs", "Emacshell Background Service",
 				     NotificationManager.IMPORTANCE_LOW);
 	manager.createNotificationChannel (channel);
 	notification = (new Notification.Builder (this, "emacs")
-			.setContentTitle ("Emacs")
+			.setContentTitle ("Emacshell")
 			.setContentText (infoBlurb)
 			.setSmallIcon (android.R.drawable.sym_def_app_icon)
 			.build ());

@@ -124,19 +124,43 @@ background-shell semantics they rely on — see REVIEW.org).
 ## The terminal — `M-x termux`
 
 `M-x termux` opens a full Termux shell **inside Emacs** (a `term`
-buffer): the bootstrap's bash runs as a login shell with
-`PREFIX`/`TMPDIR` set, so `pkg`, `apt` and every other prefix tool
-work exactly as in a standalone Termux. `M-x termux-activity`
+buffer): the bootstrap's bash runs as a login shell with the exact
+session environment a TermuxActivity terminal gives it (`PREFIX`,
+`PATH=$PREFIX/bin`, `TMPDIR`, `TERMUX__*` — see
+`termux-session-environment`), so `pkg`, `apt` and every other prefix
+tool work exactly as in a standalone Termux. `M-x termux-activity`
 (alias `emacshell-open-terminal`) opens the vendored TermuxActivity
 in a separate Android window instead — same app, same UID, same
 files — for the things that want a real Android-side pty (ssh agent,
 adb, android tools).
+
+**One home.** Termux sessions and the Emacs process share the same
+`HOME` (the app's `files` directory): a file written in the term
+buffer is instantly visible in Emacs's `~` and vice versa, and
+`~/.termux/termux.properties` / `~/.config/termux` live where both
+sides see them. (Installs that predate the unified home keep their
+old `files/home` directory; move its contents into `~` once by
+hand.)
+
+**Storage.** `M-x termux-setup-storage` is the Emacs-side twin of
+the `termux-setup-storage` shell command; both create the same
+`~/storage/{shared,downloads,dcim,pictures,music,movies}` symlinks
+in the shared home. If storage access has not been granted yet, the
+command opens the app's Android settings page — grant "Storage" /
+"All files access" and run it again. The shell command works from
+anywhere now, including inside Emacs: its broadcast is answered by a
+process-lifetime receiver in `EmacshellApplication`, not only by a
+visible TermuxActivity (the upstream design, which silently no-oped
+whenever the terminal activity was not on screen).
 
 Both commands ship as **app code** (`site-lisp/emacshell/`, with a
 `site-start.el` that loads it for every Emacs the app starts), so
 they appear on installs whose first-boot `init.el` predates them —
 unlike `init.el` itself, which is user-owned after first boot and is
 never rewritten.
+
+User-visible branding is "Emacshell" throughout — launcher, Recents,
+notifications, documents provider, preferences screens.
 
 ## pkg / apt — the custom-prefix repository
 

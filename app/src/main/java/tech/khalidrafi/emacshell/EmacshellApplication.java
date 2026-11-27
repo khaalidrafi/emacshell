@@ -2,17 +2,24 @@ package tech.khalidrafi.emacshell;
 
 import android.app.Activity;
 import android.app.Application;
+import android.content.BroadcastReceiver;
 import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
+import android.Manifest;
 import android.os.Build;
 import android.system.Os;
 import android.util.Log;
 
+import com.termux.app.TermuxActivity;
 import com.termux.app.TermuxInstaller;
 import com.termux.shared.crash.TermuxCrashUtils;
 import com.termux.shared.logger.Logger;
+import com.termux.shared.packages.PermissionUtils;
 import com.termux.shared.settings.preferences.TermuxAppSharedPreferences;
+import com.termux.shared.termux.TermuxConstants;
 
 import org.gnu.emacs.EmacsApplication;
 import org.gnu.emacs.EmacsNative;
@@ -60,6 +67,9 @@ public final class EmacshellApplication extends Application
     /** Set once the bootstrap kick-off happened for this process. */
     private boolean mBootstrapStarted;
 
+    /** True while TermuxActivity is between onResume/onPause. */
+    private boolean mTermuxActivityResumed;
+
     @Override
     public void onCreate() {
         super.onCreate();
@@ -67,6 +77,20 @@ public final class EmacshellApplication extends Application
         /* --- Termux half (mirrors com.termux.app.TermuxApplication) --- */
         TermuxCrashUtils.setCrashHandler(this);
         setLogLevel();
+
+        /* --- Emacshell storage-setup receiver ---
+
+           Upstream termux-setup-storage broadcasts
+           <pkg>.app.reload_style and relies on TermuxActivity's
+           context-registered receiver, which only exists while the
+           terminal is VISIBLE.  In emacshell the user normally lives in
+           Emacs, so that broadcast silently died and no ~/storage
+           symlinks were ever created.  This process-lifetime receiver
+           (registered from the Application, so alive whenever Emacs or
+           any terminal is) closes that gap.  Dynamic receivers are not
+           subject to the Android 8+ implicit-broadcast ban that would
+           block a manifest-declared one. */
+        registerStorageSetupReceiver();
 
         /* --- Emacs half (mirrors org.gnu.emacs.EmacsApplication, which
               is final and cannot be extended; see the class comment) --- */
@@ -276,11 +300,61 @@ public final class EmacshellApplication extends Application
     }
 
     /* ------------------------------------------------------------------ */
+    /* Storage setup (termux-setup-storage).                               */
+    /* ------------------------------------------------------------------ */
+
+    private void registerStorageSetupReceiver() {
+        IntentFilter filter = new IntentFilter();
+        filter.addAction(TermuxConstants.TERMUX_APP.TERMUX_ACTIVITY.ACTION_RELOAD_STYLE);
+        registerReceiver(new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                if (intent == null)
+                    return;
+                if (!"storage".equals(intent.getStringExtra(
+                        TermuxConstants.TERMUX_APP.TERMUX_ACTIVITY.EXTRA_RELOAD_STYLE)))
+                    return;
+
+                /* TermuxActivity handles the broadcast itself (permission
+                   dialog + symlinks) whenever its own receiver is
+                   registered; never do the work twice. */
+                if (mTermuxActivityResumed)
+                    return;
+
+                Logger.logInfo(LOG_TAG,
+                        "termux-setup-storage request received (TermuxActivity not visible)");
+                if (PermissionUtils.checkPermission(EmacshellApplication.this,
+                        Manifest.permission.WRITE_EXTERNAL_STORAGE)) {
+                    /* Permission already there: finish the job right here,
+                       no UI needed.  Symlinks land in the shared ~ (the
+                       files dir), so Emacs sees ~/storage immediately. */
+                    TermuxInstaller.setupStorageSymlinks(EmacshellApplication.this);
+                } else {
+                    /* Runtime permission dialog needs an Activity.  Launch
+                       TermuxActivity with the storage action; its
+                       onResume sees the action, requests the permission,
+                       and onRequestPermissionsResult creates the
+                       symlinks (see TermuxActivity's launch-intent
+                       handling). */
+                    Intent activity = new Intent(EmacshellApplication.this,
+                            TermuxActivity.class);
+                    activity.setAction(
+                            TermuxConstants.TERMUX_APP.TERMUX_ACTIVITY.ACTION_REQUEST_PERMISSIONS);
+                    activity.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(activity);
+                }
+            }
+        }, filter);
+    }
+
+    /* ------------------------------------------------------------------ */
     /* Bootstrap and distro rootfs staging.                                */
     /* ------------------------------------------------------------------ */
 
     @Override
     public synchronized void onActivityResumed(Activity activity) {
+        mTermuxActivityResumed = activity instanceof TermuxActivity;
+
         if (mBootstrapStarted)
             return;
         mBootstrapStarted = true;
@@ -318,11 +392,16 @@ public final class EmacshellApplication extends Application
         }, "emacshell-rootfs").start();
     }
 
-    /* Remaining ActivityLifecycleCallbacks: unused. */
+    /* Remaining ActivityLifecycleCallbacks: mostly unused; onPause
+       clears the TermuxActivity-visibility flag kept for the storage
+       receiver above. */
     @Override public void onActivityCreated(Activity activity,
                                             android.os.Bundle savedInstanceState) { }
     @Override public void onActivityStarted(Activity activity) { }
-    @Override public void onActivityPaused(Activity activity) { }
+    @Override public void onActivityPaused(Activity activity) {
+        if (activity instanceof TermuxActivity)
+            mTermuxActivityResumed = false;
+    }
     @Override public void onActivityStopped(Activity activity) { }
     @Override public void onActivitySaveInstanceState(Activity activity,
                                                       android.os.Bundle outState) { }

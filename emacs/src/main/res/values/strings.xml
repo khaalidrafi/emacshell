@@ -19,27 +19,27 @@ along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>. -->
 
 <resources>
   <string name="start_quick_title">
-    Restart Emacs with -Q
+    Restart Emacshell with -Q
   </string>
   <string name="start_quick_caption">
-    Restart Emacs, but do not load site lisp or init files.
+    Restart Emacshell, but do not load site lisp or init files.
   </string>
   <string name="start_debug_init_title">
-    Restart Emacs with --debug-init
+    Restart Emacshell with --debug-init
   </string>
   <string name="start_debug_init_caption">
-    Restart Emacs, and display the debugger should an error occur while loading initialization files.
+    Restart Emacshell, and display the debugger should an error occur while loading initialization files.
   </string>
   <string name="erase_dump_title">
     Delete dump file
   </string>
   <string name="erase_dump_caption">
-    Remove the dumped state created when Emacs was installed.
+    Remove the dumped state created when Emacshell was installed.
   </string>
 
   <!-- This resource describes the purpose of any `sharedUserId'
        specified at configure-time.  -->
   <string name="shared_user_name">
-    Emacs shared user
+    Emacshell shared user
   </string>
 </resources>

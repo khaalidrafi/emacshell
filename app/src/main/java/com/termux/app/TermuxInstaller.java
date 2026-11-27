@@ -400,7 +400,13 @@ public final class TermuxInstaller {
             true, true);
     }
 
-    static void setupStorageSymlinks(final Context context) {
+    /* Emacshell: public (upstream: package-private).  The storage
+       symlink setup must also be triggerable from outside
+       com.termux.app: EmacshellApplication's process-lifetime receiver
+       handles `termux-setup-storage' broadcasts when TermuxActivity is
+       not running (the normal case in emacshell, where the user lives
+       in Emacs and TermuxActivity may never have been opened). */
+    public static void setupStorageSymlinks(final Context context) {
         final String LOG_TAG = "termux-storage";
 
         Logger.logInfo(LOG_TAG, "Setting up storage symlinks.");

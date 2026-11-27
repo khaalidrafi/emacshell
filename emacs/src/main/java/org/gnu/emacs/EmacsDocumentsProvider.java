@@ -113,7 +113,7 @@ public final class EmacsDocumentsProvider extends DocumentsProvider
     /* Now create and add a row for each file in the base
        directory.  */
     row.add (Root.COLUMN_ROOT_ID, baseDir.getAbsolutePath ());
-    row.add (Root.COLUMN_SUMMARY, "Emacs home directory");
+    row.add (Root.COLUMN_SUMMARY, "Emacshell home directory");
 
     /* Add the appropriate flags.  */
 
@@ -121,7 +121,7 @@ public final class EmacsDocumentsProvider extends DocumentsProvider
 				 | Root.FLAG_SUPPORTS_IS_CHILD));
     row.add (Root.COLUMN_ICON, R.drawable.emacs);
     row.add (Root.FLAG_LOCAL_ONLY);
-    row.add (Root.COLUMN_TITLE, "Emacs");
+    row.add (Root.COLUMN_TITLE, "Emacshell");
     row.add (Root.COLUMN_DOCUMENT_ID, baseDir.getAbsolutePath ());
 
     return result;

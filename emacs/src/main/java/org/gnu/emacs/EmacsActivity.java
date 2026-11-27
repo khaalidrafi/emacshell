@@ -616,7 +616,7 @@ public class EmacsActivity extends Activity
     TaskDescription description;
 
     if (window == null || window.wmName == null)
-      wmName = "Emacs";
+      wmName = "Emacshell";
     else
       wmName = window.wmName;
 

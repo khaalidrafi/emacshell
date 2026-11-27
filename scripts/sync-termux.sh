@@ -159,6 +159,14 @@ if ! grep -q 'tech.khalidrafi.emacshell.EmacshellApplication' app/src/main/Andro
     echo "error: EmacshellApplication not wired into the manifest" >&2
     exit 1
 fi
+# Patch 0009 pins the unified HOME: Termux sessions share the Emacs
+# files dir instead of a separate files/home.  If this grep fails, the
+# patch series (or upstream) drifted and Emacshell split-brains again.
+if ! grep -q 'TERMUX_HOME_DIR_PATH = TERMUX_FILES_DIR_PATH;' \
+        termux-shared/src/main/java/com/termux/shared/termux/TermuxConstants.java; then
+    echo "error: TERMUX_HOME_DIR_PATH is not the unified files dir (patch 0009 missing or reworked?)" >&2
+    exit 1
+fi
 
 java_files="$(find app/src/main/java/com termux-shared/src/main/java \
                    terminal-emulator/src/main/java terminal-view/src/main/java \

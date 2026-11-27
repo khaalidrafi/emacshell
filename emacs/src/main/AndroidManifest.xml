@@ -133,7 +133,7 @@
         <activity
             android:autoRemoveFromRecents="true"
             android:exported="true"
-            android:label="Emacs options"
+            android:label="Emacshell options"
             android:name="org.gnu.emacs.EmacsPreferencesActivity"
             android:theme="@style/EmacsStyle">
             <intent-filter>
@@ -166,7 +166,7 @@
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="specialUse"
-            android:label="GNU Emacs service"
+            android:label="Emacshell service"
             android:name="org.gnu.emacs.EmacsService" />
 
     </application>

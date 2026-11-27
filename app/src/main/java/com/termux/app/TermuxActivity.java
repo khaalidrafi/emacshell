@@ -150,6 +150,17 @@ public final class TermuxActivity extends Activity implements ServiceConnection 
     private boolean isOnResumeAfterOnCreate = false;
 
     /**
+     * Emacshell: set when the activity was LAUNCHED with the storage
+     * permission request action (from EmacshellApplication's
+     * process-lifetime termux-setup-storage receiver, or from
+     * `M-x termux-setup-storage' in Emacs via am start), so that the
+     * permission flow runs once the activity is fully resumed.  The
+     * upstream broadcast receiver path never sets this; it keeps its
+     * own, unchanged behavior.
+     */
+    private boolean mRequestStoragePermissionOnResume;
+
+    /**
      * The {@link TermuxActivity} is in an invalid state and must not be run.
      */
     private boolean mIsInvalidState;
@@ -181,6 +192,12 @@ public final class TermuxActivity extends Activity implements ServiceConnection 
 
         Logger.logDebug(LOG_TAG, "onCreate");
         isOnResumeAfterOnCreate = true;
+
+        /* Emacshell: a launch intent carrying the storage action means
+           the permission flow must run once we are resumed (see
+           onResume).  Checked here AND in onNewIntent, because
+           singleTask delivers re-launches through onNewIntent. */
+        maybeArmStoragePermissionRequest(getIntent());
 
         // Check if a crash happened on last run of the app and show a
         // notification with the crash details if it did
@@ -253,6 +270,27 @@ public final class TermuxActivity extends Activity implements ServiceConnection 
     }
 
     @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        maybeArmStoragePermissionRequest(intent);
+    }
+
+    /**
+     * Emacshell: arm the storage permission flow if the given (launch)
+     * intent asks for it.  ACTION_REQUEST_PERMISSIONS is upstream's own
+     * action for this (normally only ever seen as a broadcast); reusing
+     * it for the launch keeps one action string for one job.
+     */
+    private void maybeArmStoragePermissionRequest(Intent intent) {
+        if (intent == null)
+            return;
+        if (TermuxConstants.TERMUX_APP.TERMUX_ACTIVITY.ACTION_REQUEST_PERMISSIONS
+                .equals(intent.getAction()))
+            mRequestStoragePermissionOnResume = true;
+    }
+
+    @Override
     public void onStart() {
         super.onStart();
 
@@ -287,6 +325,18 @@ public final class TermuxActivity extends Activity implements ServiceConnection 
 
         if (mTermuxTerminalViewClient != null)
             mTermuxTerminalViewClient.onResume();
+
+        /* Emacshell: if launched for storage setup (see
+           maybeArmStoragePermissionRequest), drive the permission flow
+           now that the activity can show dialogs.  With the permission
+           already granted this goes straight to the symlinks; otherwise
+           the system dialog appears and onRequestPermissionsResult
+           finishes the job.  Upstream's broadcast path is unaffected. */
+        if (mRequestStoragePermissionOnResume) {
+            mRequestStoragePermissionOnResume = false;
+            if (ensureStoragePermissionGranted())
+                TermuxInstaller.setupStorageSymlinks(this);
+        }
 
         isOnResumeAfterOnCreate = false;
     }

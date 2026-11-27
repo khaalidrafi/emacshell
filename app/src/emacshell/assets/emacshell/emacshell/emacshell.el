@@ -16,6 +16,9 @@
 ;;   M-x termux          a full Termux shell INSIDE Emacs (term buffer)
 ;;   M-x termux-activity the vendored TermuxActivity in a separate
 ;;                       Android window (same app, same files)
+;;   M-x termux-setup-storage
+;;                       ~/storage symlinks to Android shared storage
+;;                       (the Emacs twin of the shell command)
 ;;   M-x termux-fix-repo point apt at the emacshell package repo
 ;;   M-x termux-repair   one-shot repair of a broken apt/dpkg state
 
@@ -54,17 +57,53 @@ Emacs Android port sets itself -- the most reliable runtime source."
   (if (string-suffix-p ".distro" (emacshell-package-name))
       "distro" "termux"))
 
+(defun emacshell-am ()
+  "Return the best available Android `am' executable, or signal.
+`termux-am' from the bootstrap's termux-tools is preferred over
+/system/bin/am because some Android 12+ builds deny plain apps the
+ability to execute the system am wrapper."
+  (or (let ((termux-am (expand-file-name "termux-am"
+                                         (expand-file-name "bin" (emacshell-prefix)))))
+        (and (file-executable-p termux-am) termux-am))
+      (and (file-executable-p "/system/bin/am") "/system/bin/am")
+      (user-error "No `am' executable found; is the bootstrap installed?")))
+
 ;;; ------------------------------------------------- in-Emacs termux shell
+
+(defun termux-session-environment ()
+  "Return the Termux session environment as a list of \"NAME=VALUE\".
+Mirrors TermuxShellUtils.buildEnvironment (the non-failsafe branch)
+from the vendored termux-shared sources, so a `termux' buffer gets
+exactly the environment a TermuxActivity terminal session gets --
+including the HOME shared with the Emacs process itself, which is
+what keeps Termux and Emacs in sync: every file either side writes
+to ~ is instantly visible to the other."
+  (let* ((home (emacshell-home))
+         (prefix (emacshell-prefix))
+         (bin (expand-file-name "bin" prefix)))
+    (list
+     (concat "HOME=" home)
+     (concat "TERMUX__HOME=" home)
+     (concat "PREFIX=" prefix)
+     (concat "TERMUX__PREFIX=" prefix)
+     (concat "PATH=" bin)
+     (concat "TMPDIR=" (expand-file-name "tmp" prefix))
+     (concat "SHELL=" (expand-file-name "bash" bin))
+     "LANG=en_US.UTF-8"
+     "COLORTERM=truecolor")))
 
 ;;;###autoload
 (defun termux (&optional command)
   "Start an interactive Termux shell INSIDE Emacs (a `term' buffer).
 
-The bootstrap's bash runs as a login shell with the Termux
-environment (PREFIX, TMPDIR) set, so pkg/apt and every other prefix
-tool work exactly as they do in the TermuxActivity.  This is the
-answer to \"how do I get a terminal inside the Emacshell app\" --
-no separate activity, no widget, just C-x b *termux*.
+The bootstrap's bash runs as a login shell with the full Termux
+session environment (PREFIX, PATH, TMPDIR, TERMUX__* variables --
+see `termux-session-environment'), so pkg/apt and every other
+prefix tool work exactly as they do in the TermuxActivity, and the
+HOME is the one shared with Emacs, so files written here are
+instantly visible to Emacs (and vice versa).  This is the answer to
+\"how do I get a terminal inside the Emacshell app\" -- no separate
+activity, no widget, just C-x b *termux*.
 
 COMMAND (optional) is a shell command line to run instead of an
 interactive shell."
@@ -75,10 +114,7 @@ interactive shell."
                    bash
                  (or shell-file-name "/system/bin/sh")))
          (process-environment
-          (append (list (concat "PREFIX=" prefix)
-                        (concat "TMPDIR=" (expand-file-name "tmp" prefix))
-                        (concat "HOME=" (emacshell-home))
-                        "TERM=xterm-256color")
+          (append (termux-session-environment)
                   process-environment)))
     (term (if (and command (not (string= command "")))
               (concat prog " -il -c " (shell-quote-argument command))
@@ -98,26 +134,72 @@ interactive shell."
 (defun termux-activity ()
   "Open the bundled Termux terminal in a separate Android activity.
 Emacs keeps running; the terminal is the vendored TermuxActivity,
-which shares this app's UID and therefore the same files, sockets
-and prefix.  Use it for anything needing a full Android-side pty
-(ssh agent, adb, android tools).
-`termux-am' from the bootstrap's termux-tools is preferred over
-/system/bin/am because Android 12+ denies plain apps execution of
-the system am wrapper."
+shares this app's UID and therefore the same files, sockets and
+prefix.  Use it for anything needing a full Android-side pty
+(ssh agent, adb, android tools), or when `M-x termux' is not
+enough."
   (interactive)
-  (let* ((bin (expand-file-name "bin" (emacshell-prefix)))
-         (termux-am (expand-file-name "termux-am" bin))
-         (am (cond ((file-executable-p termux-am) termux-am)
-                   ((file-executable-p "/system/bin/am") "/system/bin/am")
-                   (t (user-error
-                       "No `am' executable found; is the bootstrap installed?"))))
-         (component (format "%s/com.termux.app.TermuxActivity"
-                            (emacshell-package-name))))
-    (start-process "termux-activity" nil am "start" "-n" component)
+  (let ((component (format "%s/com.termux.app.TermuxActivity"
+                           (emacshell-package-name))))
+    (start-process "termux-activity" nil (emacshell-am)
+                   "start" "-n" component)
     (message "Started %s" component)))
 
 ;;;###autoload
 (defalias 'emacshell-open-terminal 'termux-activity)
+
+;;; ------------------------------------------------- storage setup (Emacs)
+
+(defconst termux-storage-links
+  '(("shared"    . "/storage/emulated/0")
+    ("downloads" . "/storage/emulated/0/Download")
+    ("dcim"      . "/storage/emulated/0/DCIM")
+    ("pictures"  . "/storage/emulated/0/Pictures")
+    ("music"     . "/storage/emulated/0/Music")
+    ("movies"    . "/storage/emulated/0/Movies"))
+  "The ~/storage symlinks, mirroring TermuxInstaller.setupStorageSymlinks.
+The Android side creates these when `termux-setup-storage' (shell)
+runs and the app answers its broadcast; this table lets the Emacs
+side create (or refresh) the same set without shelling out.")
+
+;;;###autoload
+(defun termux-setup-storage ()
+  "Set up ~/storage symlinks to Android shared storage, from Emacs.
+
+The Emacs-side equivalent of the `termux-setup-storage' shell
+command.  Both create the same symlinks in the same shared HOME,
+so it does not matter which one runs first.
+
+If shared storage is not readable yet, this opens the Emacshell
+page in Android Settings so storage access can be granted (the
+exact toggle differs by Android version: \"Storage\"/\"Files and
+media\" on older versions, \"All files access\" on Android 11+),
+and asks you to run the command again afterwards."
+  (interactive)
+  (let ((shared "/storage/emulated/0"))
+    (if (file-readable-p shared)
+        (let ((dir (expand-file-name "storage" (emacshell-home)))
+              (created 0))
+          (make-directory dir t)
+          (dolist (link termux-storage-links)
+            (let ((name (expand-file-name (car link) dir)))
+              (cond
+               ((file-symlink-p name)        ; refresh stale targets
+                (delete-file name)
+                (make-symbolic-link (cdr link) name)
+                (setq created (1+ created)))
+               ((file-exists-p name)
+                (message "termux-setup-storage: %s exists and is not a symlink; leaving it alone" name))
+               (t
+                (make-symbolic-link (cdr link) name)
+                (setq created (1+ created))))))
+          (message "Storage ready: ~/storage/{shared,downloads,dcim,pictures,music,movies} (%d symlinks)" created))
+      (progn
+        (start-process "termux-setup-storage" nil (emacshell-am)
+                       "start" "-a" "android.settings.APPLICATION_DETAILS_SETTINGS"
+                       "-d" (concat "package:" (emacshell-package-name)))
+        (user-error
+         "Shared storage is not readable yet.  Grant storage access (on Android 11+: \"All files access\") in the Emacshell settings page that just opened, then run M-x termux-setup-storage again")))))
 
 ;;; --------------------------------------------------------- apt repo fix
 
