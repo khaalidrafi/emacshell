@@ -151,6 +151,78 @@
    CLOCK: [2026-11-25 Wed 10:09]--[2026-11-25 Wed 10:09] =>  0:01
    :END:
 
+** TODO class-name decision correction -- Emacshell + Khalid Rafi  :P1:rename:
+   SCHEDULED: <2026-11-27 Fri 07:30>
+   DEADLINE: <2026-11-27 Fri 23:59 -6h>
+   :PROPERTIES:
+   :EFFORT:   1:00
+   :END:
+   - [2026-11-27] Owner order (verbatim intent, not wording): the
+     "documented decision" that emacshell keeps the org.gnu.emacs
+     class names is REJECTED.  We already use another class name --
+     the app's own pattern (tech.khalidrafi.emacshell.Emacshell-
+     Application, TarExtractor, DistroRootfsStager).  The class name
+     must carry Emacshell and Khalid Rafi.
+   - [2026-11-27] GLM 5.3 (Lead + DoE, transition seat): target
+     identified -- scripts/patch-emacs-java.py lines 57-73,
+     "Deliberately NOT patched (documented decisions)", third entry:
+     EmacsNoninteractive.java loadClass ("org.gnu.emacs.EmacsNoninteractive"),
+     "emacshell keeps the org.gnu.emacs java package for the Emacs
+     classes".  Echoed in commit 344a1b4's message ("Internal
+     org.gnu.emacs class names ... deliberately unchanged").
+     HARD ABI CONSTRAINT (why a plain rename crashes): the GNU native
+     helpers we NEVER rebuild hardcode these names -- libandroid-
+     emacs.so spawns app_process with the literal class name
+     org.gnu.emacs.EmacsNoninteractive (see the file's own header
+     comment), and libemacs.so reaches the other Emacs classes via
+     JNI FindClass("org/gnu/emacs/...") descriptors compiled into the
+     C code.  PLAN: (1) real implementation moves to tech.khalidrafi.
+     emacshell.EmacshellNoninteractive (same logic, loadClass string
+     now names the Emacshell/Khalid Rafi class); (2) org.gnu.emacs.
+     EmacsNoninteractive stays ONLY as a 3-line delegating stub whose
+     main() forwards to the Emacshell class -- it exists because
+     libandroid-emacs.so (never rebuilt, DESIGN.org "No Emacs C
+     rebuild, ever") names it on the app_process command line; (3)
+     patch-emacs-java.py gains a step that produces both files from
+     the pristine tarball source, --check verifies; (4) the decision
+     text is rewritten to state the stub's ABI reason instead of a
+     blanket "keeps org.gnu.emacs"; (5) scripts/check.sh must stay
+     green (43/43 today); (6) BUILD.org line ~60 mention updated.
+     The other 40 org.gnu.emacs classes CANNOT move without an Emacs
+     C rebuild (JNI descriptors in libemacs.so) -- that stays law and
+     the rewritten decision must say so explicitly.
+   :LOGBOOK:
+   CLOCK: [2026-11-27 Fri 07:15]
+   :END:
+
+** TODO pkg upgrade on EXISTING installs: dpkg-perl still poisons   :P1:apt:
+   SCHEDULED: <2026-11-27 Fri 07:30>
+   DEADLINE: <2026-11-27 Fri 23:59 -6h>
+   :PROPERTIES:
+   :EFFORT:   0:40
+   :END:
+   - [2026-11-26] Owner report: "Still getting dpkg-perl : Depends:
+     clang but it is not installed" on pkg upgrade.  Root cause is
+     KNOWN and already fixed for FRESH installs (REVIEW.org "pkg/apt"
+     row): upstream dpkg-perl declares perl/clang/make toolchain deps
+     the bootstrap never ships; build-bootstrap patch 4 skips the
+     dpkg-perl subpackage in produced zips, termux-repair drops it on
+     demand.  The Owner's device is an EXISTING install: its dpkg
+     status still lists dpkg-perl with unmet Depends, and the
+     automatic startup remediation (site-start.el -> emacshell-maybe-
+     fix-repo) fixes ONLY sources.list, never the poisoned status --
+     so pkg upgrade keeps dying until M-x termux-repair runs once.
+   - [2026-11-27] GLM 5.3 plan: (1) immediate Owner relief on v0.1.6
+     (no code needed): M-x termux-repair once, then pkg upgrade
+     works -- deliver this in the seat's reply; (2) durable fix for
+     every existing install: extend the interactive startup path with
+     an idempotent emacshell-maybe-purge-dpkg-perl (only when the
+     status DB lists dpkg-perl: run dpkg --remove dpkg-perl, cheap,
+     side-effect-free otherwise); ships with the next APK.
+   :LOGBOOK:
+   CLOCK: [2026-11-27 Fri 07:15]
+   :END:
+
 ** DONE emacshell-packages: rename the apt repo, ship the APK with it :P1:
    CLOSED: [2026-11-25 Wed 12:55]
    :PROPERTIES:
