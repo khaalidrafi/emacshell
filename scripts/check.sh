@@ -53,7 +53,7 @@ EOF
     then
         xml_failed+=("${xml}")
     fi
-done < <(find "${src_roots[@]}" -name '*.xml' -print0)
+done < <(find "${src_roots[@]}" -name build -prune -o -name '*.xml' -print0)
 if [ "${#xml_failed[@]}" -eq 0 ]; then
     ok "all committed XML is well-formed"
 else
@@ -77,7 +77,7 @@ fi
 # --- 5. side-by-side laws ------------------------------------------------------
 # Law: never a sharedUserId (the root cause of Termux prefix conflicts
 # and an install-time collision with upstream Termux).
-shared="$(find "${src_roots[@]}" -name '*.xml' -exec grep -l 'android:sharedUserId=' {} + 2>/dev/null || true)"
+shared="$(find "${src_roots[@]}" -name build -prune -o -name '*.xml' -exec grep -l 'android:sharedUserId=' {} + 2>/dev/null || true)"
 if [ -z "${shared}" ]; then
     ok "no android:sharedUserId in committed XML"
 else
@@ -141,7 +141,7 @@ fi
 # package supports; Android 10+ takes 29, Android 9 and older needs 21).
 gnu_pin_fail=0
 for api in 29 21; do
-    if awk -v a="${api}" '$2 == a && $3 == "arm64-v8a" && $1 ~ /^[0-9a-f]{64}$/' pins/gnu-apk.sha256 | grep -q .; then
+    if awk -v a="${api}" '$2 == a && $3 == "arm64-v8a" && length($1) == 64 && $1 ~ /^[0-9a-f]+$/' pins/gnu-apk.sha256 | grep -q .; then
         ok "pins/gnu-apk.sha256 has a ${api}/arm64-v8a entry"
     else
         bad "pins/gnu-apk.sha256 has a ${api}/arm64-v8a entry"

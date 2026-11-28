@@ -74,8 +74,8 @@ android {
         targetSdk project.properties.targetSdkVersion.toInteger()
         // Per-api versionCodes keep updates monotonic within a variant
         // and let a 9->10 OS upgrade switch variants cleanly (29xx > 21xx).
-        versionCode gnuApkApi * 100 + 7
-        versionName '0.1.6'
+        versionCode gnuApkApi * 100 + 8
+        versionName '0.1.7'
 
         // Consumed by the vendored termux manifest (permission, provider
         // and receiver names) and by the :emacs library manifest
@@ -180,10 +180,11 @@ android {
 
     applicationVariants.all { variant ->
         variant.outputs.all { output ->
-            // emacshell-<flavor>-<versionName>-api<gnuApi>[-universal].apk
+            // emacshell-<flavor>-<versionName>-android<10+|7->[-universal].apk
             def abi = output.getFilter(com.android.build.OutputFile.ABI)
+            def androidLabel = (gnuApkApi == 29) ? 'android10+' : 'android7-'
             outputFileName = new File(
-                "emacshell-${variant.flavorName}-${variant.versionName}-api${gnuApkApi}" +
+                "emacshell-${variant.flavorName}-${variant.versionName}-${androidLabel}" +
                 (abi ? "-${abi}" : "") + ".apk")
         }
     }
