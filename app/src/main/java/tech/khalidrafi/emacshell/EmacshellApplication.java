@@ -10,6 +10,7 @@ import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.Manifest;
 import android.os.Build;
+import android.os.Environment;
 import android.system.Os;
 import android.util.Log;
 
@@ -110,6 +111,11 @@ public final class EmacshellApplication extends Application
         /* --- org-activity usage bridge (loopback, token-gated; see
                EmacshellUsageServer) --- */
         EmacshellUsageServer.start(this);
+
+        /* If a prefix already exists (upgrade from an earlier APK), ensure
+           its apt sources.list and dpkg status are healthy in the
+           background without waiting for an interactive shell/Emacs hook. */
+        TermuxInstaller.ensureExistingPrefixHealthyAsync(this);
 
         /* TermuxInstaller.setupBootstrapIfNeeded needs an Activity for
            its progress and error dialogs, so the bootstrap is started
@@ -323,8 +329,7 @@ public final class EmacshellApplication extends Application
 
                 Logger.logInfo(LOG_TAG,
                         "termux-setup-storage request received (TermuxActivity not visible)");
-                if (PermissionUtils.checkPermission(EmacshellApplication.this,
-                        Manifest.permission.WRITE_EXTERNAL_STORAGE)) {
+                if (hasStoragePermission()) {
                     /* Permission already there: finish the job right here,
                        no UI needed.  Symlinks land in the shared ~ (the
                        files dir), so Emacs sees ~/storage immediately. */
@@ -345,6 +350,15 @@ public final class EmacshellApplication extends Application
                 }
             }
         }, filter);
+    }
+
+    private boolean hasStoragePermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+                && Environment.isExternalStorageManager()) {
+            return true;
+        }
+        return PermissionUtils.checkPermission(this,
+                Manifest.permission.WRITE_EXTERNAL_STORAGE);
     }
 
     /* ------------------------------------------------------------------ */

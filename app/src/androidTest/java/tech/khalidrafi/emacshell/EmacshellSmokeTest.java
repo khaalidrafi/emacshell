@@ -206,6 +206,7 @@ public class EmacshellSmokeTest {
         checkCoreutilsAreExecutableFromThePrefix();
         checkInitFilesInstalledWithExecPathWiring();
         checkUsageBridgeAnswersPing();
+        checkPrefixHealth();
     }
 
     /* ------------------------------------------------------------------ */
@@ -377,5 +378,58 @@ public class EmacshellSmokeTest {
             assertEquals("PING with the boot secret must be accepted",
                     true, json.optBoolean("ok", false));
         }
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* 6. Prefix health (sources.list and no poisoned dpkg-perl)           */
+    /* ------------------------------------------------------------------ */
+
+    private void checkPrefixHealth() throws Exception {
+        launchMainActivity();
+        ensureBootstrap();
+
+        File sources = new File(target().getFilesDir(), "usr/etc/apt/sources.list");
+        assertTrue("apt sources.list missing after bootstrap", sources.isFile());
+        String sourcesText = readAll(sources);
+        assertTrue("sources.list must point at emacshell-packages-v1: " + sourcesText,
+                sourcesText.contains("emacshell-packages-v1"));
+        for (String line : sourcesText.split("\n")) {
+            if (line.trim().startsWith("deb ")) {
+                assertFalse("active sources.list line still points upstream: " + line,
+                        line.contains("packages.termux.dev"));
+            }
+        }
+
+        File status = new File(target().getFilesDir(), "usr/var/lib/dpkg/status");
+        assertTrue("dpkg status file missing after bootstrap", status.isFile());
+        // TermuxInstaller purges any pre-patch-4 dpkg-perl right after moving
+        // the staging prefix; poll briefly in case ensureBootstrap() observed
+        // bin/bash right after renameTo().
+        long deadline = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(30);
+        boolean dpkgPerlInstalled = true;
+        while (System.currentTimeMillis() < deadline) {
+            dpkgPerlInstalled = isPackageInstalled(status, "dpkg-perl");
+            if (!dpkgPerlInstalled)
+                break;
+            Thread.sleep(500);
+        }
+        assertFalse("dpkg-perl must not be installed in var/lib/dpkg/status",
+                dpkgPerlInstalled);
+    }
+
+    private static boolean isPackageInstalled(File statusFile, String pkgName) {
+        String text = readAll(statusFile);
+        boolean inPkg = false;
+        for (String line : text.split("\n")) {
+            if (line.trim().isEmpty()) {
+                inPkg = false;
+            } else if (("Package: " + pkgName).equals(line.trim())) {
+                inPkg = true;
+            } else if (inPkg && line.startsWith("Status:")) {
+                if (!line.contains("not-installed"))
+                    return true;
+            }
+        }
+        return false;
     }
 }

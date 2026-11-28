@@ -11,18 +11,12 @@
 ;;
 ;; Keep this file minimal: it must stay cheap and side-effect-free in
 ;; batch mode (scripts run `emacs --batch' with the same environment).
-;; The startup fixups only run interactively, are idempotent, and the
-;; repo fixup only ever rewrites upstream-default sources.list lines
-;; (preserving them as comments); the dpkg-perl purge only acts when
-;; the status DB still lists the subpackage whose unshipped toolchain
-;; deps break `pkg upgrade' on pre-v0.1.5 installs.
+;; Prefix maintenance (sources.list and removing upstream's unshipped-dep
+;; dpkg-perl subpackage) is handled at bootstrap build time and by
+;; TermuxInstaller in the Android app layer, never on Emacs startup.
 
 ;;; Code:
 
 (require 'emacshell nil t)
-
-(unless noninteractive
-  (emacshell-maybe-fix-repo)
-  (emacshell-maybe-purge-dpkg-perl))
 
 ;;; site-start.el ends here

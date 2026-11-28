@@ -33,6 +33,7 @@ import java.io.InputStreamReader;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -66,6 +67,8 @@ import static com.termux.shared.termux.TermuxConstants.TERMUX_STAGING_PREFIX_DIR
 public final class TermuxInstaller {
 
     private static final String LOG_TAG = "TermuxInstaller";
+    private static final AtomicBoolean sPrefixHealthChecked = new AtomicBoolean(false);
+    private static final Object sPrefixHealthLock = new Object();
 
     /** Performs bootstrap setup if necessary. */
     public static void setupBootstrapIfNeeded(final Activity activity, final Runnable whenDone) {
@@ -107,6 +110,7 @@ public final class TermuxInstaller {
             if(PREFIX_FILE_LIST == null || PREFIX_FILE_LIST.length == 0 || (PREFIX_FILE_LIST.length == 1 && TermuxConstants.TERMUX_TMP_PREFIX_DIR_PATH.equals(PREFIX_FILE_LIST[0].getAbsolutePath()))) {
                 Logger.logInfo(LOG_TAG, "The termux prefix directory \"" + TERMUX_PREFIX_DIR_PATH + "\" exists but is empty or only contains the tmp directory.");
             } else {
+                ensureExistingPrefixHealthyAsync(activity.getApplicationContext());
                 whenDone.run();
                 return;
             }
@@ -266,6 +270,11 @@ public final class TermuxInstaller {
                         }
                     }
 
+                    // Clean up dpkg-perl if an older bootstrap left it in
+                    // the status database (fresh bootstraps skip it via
+                    // build-bootstrap.sh patch 4; this is defense-in-depth).
+                    purgePoisonedDpkgPerl(activity.getApplicationContext());
+
                     Logger.logInfo(LOG_TAG, "Bootstrap packages installed successfully.");
                     activity.runOnUiThread(whenDone);
 
@@ -363,9 +372,93 @@ public final class TermuxInstaller {
                 }
             }
         } catch (final Exception e) {
-            // Never block the bootstrap over the repo fix; the Elisp
-            // side retries it on every Emacs start.
+            // Never block the bootstrap over the repo fix.
             Logger.logWarnExtended(LOG_TAG, "Failed to fix apt sources.list: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Emacshell: run prefix health checks (apt repository + dpkg-perl
+     * cleanup) once per process in the background when a prefix already
+     * exists on disk (e.g. upgrades from earlier APKs).
+     */
+    public static void ensureExistingPrefixHealthyAsync(final Context context) {
+        if (!sPrefixHealthChecked.compareAndSet(false, true))
+            return;
+        final Context appContext = context.getApplicationContext();
+        new Thread(() -> {
+            if (!FileUtils.directoryFileExists(TERMUX_PREFIX_DIR_PATH, true))
+                return;
+            File[] files = TERMUX_PREFIX_DIR.listFiles();
+            if (files == null || files.length == 0
+                    || (files.length == 1 && TermuxConstants.TERMUX_TMP_PREFIX_DIR_PATH.equals(files[0].getAbsolutePath()))
+                    || !new File(TERMUX_PREFIX_DIR_PATH, "bin").isDirectory())
+                return;
+            synchronized (sPrefixHealthLock) {
+                fixAptSourcesList();
+                purgePoisonedDpkgPerl(appContext);
+            }
+        }, "emacshell-prefix-health").start();
+    }
+
+    /**
+     * Emacshell: upstream termux-packages builds dpkg-perl with
+     * Depends: perl, clang, make -- a toolchain not shipped in the
+     * bootstrap.  Bootstraps built before patch 4 recorded dpkg-perl as
+     * installed, breaking `pkg upgrade'.  Purge it once from the
+     * Android app layer when present in var/lib/dpkg/status.
+     */
+    private static void purgePoisonedDpkgPerl(final Context context) {
+        try {
+            File statusFile = new File(TERMUX_PREFIX_DIR_PATH, "var/lib/dpkg/status");
+            if (!statusFile.isFile())
+                return;
+
+            boolean inDpkgPerl = false;
+            boolean needsPurge = false;
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(new FileInputStream(statusFile), "UTF-8"))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    if (line.trim().isEmpty()) {
+                        inDpkgPerl = false;
+                    } else if ("Package: dpkg-perl".equals(line)) {
+                        inDpkgPerl = true;
+                    } else if (inDpkgPerl && line.startsWith("Status:")) {
+                        if (!line.contains("not-installed")) {
+                            needsPurge = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            if (!needsPurge)
+                return;
+
+            File dpkg = new File(TERMUX_PREFIX_DIR_PATH, "bin/dpkg");
+            if (!dpkg.canExecute()) {
+                Logger.logWarn(LOG_TAG, "Cannot purge dpkg-perl: " + dpkg + " is not executable");
+                return;
+            }
+
+            ExecutionCommand cmd = new ExecutionCommand(
+                -1,
+                dpkg.getAbsolutePath(),
+                new String[]{"--purge", "--force-remove-reinstreq", "dpkg-perl"},
+                null,
+                null,
+                true,
+                false);
+            cmd.commandLabel = "Purge dpkg-perl";
+            cmd.backgroundCustomLogLevel = Logger.LOG_LEVEL_NORMAL;
+            TermuxTask task = TermuxTask.execute(context, cmd, null, new TermuxShellEnvironmentClient(), true);
+            if (task != null && cmd.isSuccessful() && cmd.resultData.exitCode == 0) {
+                Logger.logInfo(LOG_TAG, "Purged poisoned dpkg-perl from existing prefix");
+            } else {
+                Logger.logWarnExtended(LOG_TAG, "dpkg --purge dpkg-perl did not succeed: " + cmd.toString());
+            }
+        } catch (final Exception e) {
+            Logger.logWarnExtended(LOG_TAG, "Failed to check/purge dpkg-perl: " + e.getMessage());
         }
     }
 

@@ -409,49 +409,5 @@ with an explanation in the buffer."
         (message "termux-repair: FAILED (details in *termux-repair*)"))
       (eq 0 rc))))
 
-(defun emacshell-maybe-purge-dpkg-perl ()
-  "Startup hook: drop dpkg-perl when its unshipped deps poison apt.
-Upstream's dpkg-perl subpackage declares Depends: perl, clang, make
--- a toolchain the bootstrap never ships -- so any install whose
-dpkg status database still lists it (upgrades from v0.1.4-era
-bootstraps) dies on every `pkg upgrade' with `dpkg-perl: Depends:
-clang but it is not installed' until the subpackage is removed.
-Fresh installs are immune (build-bootstrap patch 4 never packs it).
-Called from site-start.el for every interactive Emacs; a no-op --
-one status-DB read -- once the install is clean."
-  (unless (or noninteractive
-              (string= (emacshell-package-name) "com.termux"))
-    (ignore-errors
-      (let ((status (expand-file-name "var/lib/dpkg/status"
-                                      (emacshell-prefix)))
-            (dpkg (expand-file-name "bin/dpkg" (emacshell-prefix))))
-        (when (and (file-readable-p status)
-                   (file-executable-p dpkg)
-                   (with-temp-buffer
-                     (insert-file-contents-literally status)
-                     (goto-char (point-min))
-                     (re-search-forward "^Package: dpkg-perl$" nil t)))
-          (when (eq 0 (call-process dpkg nil nil nil
-                                    "--remove" "dpkg-perl"))
-            (message "emacshell: removed dpkg-perl (its toolchain \
-deps are not shipped); pkg upgrade works again")))))))
-
-(defun emacshell-maybe-fix-repo ()
-  "Startup hook: make sure apt points at the emacshell repository.
-Called from site-start.el for every interactive Emacs the app
-starts; batch Emacs is left alone.  Cheap (one file read) and fully
-idempotent -- the emacshell repository line is ensured on every
-install (ready-on-install contract, Owner order
-2026-11-26), stale
-upstream/retired lines are rewritten (preserved as comments), and
-a user who deliberately re-adds an upstream line is not fought
-with beyond the exact default lines."
-  (unless (or noninteractive
-              (string= (emacshell-package-name) "com.termux"))
-    (ignore-errors
-      (when (termux-fix-repo t)
-        (message "emacshell: apt sources switched to the emacshell repo \
-(run M-x termux-repair if pkg still misbehaves)")))))
-
 (provide 'emacshell)
 ;;; emacshell.el ends here
