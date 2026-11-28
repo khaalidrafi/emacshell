@@ -206,6 +206,7 @@
      ABI fact, not a naming preference.  APK impact: classes.dex
      only; needs a build.yml dispatch + release (next version)
      before it reaches the Owner's device.
+   - [2026-11-28] Included in v0.1.7 release build.
    :LOGBOOK:
    CLOCK: [2026-11-27 Fri 07:15]--[2026-11-27 Fri 07:45] =>  0:30
    :END:
@@ -243,8 +244,48 @@
      sandbox for byte-compile; the function mirrors the proven
      termux-repair dpkg call).  Ships with the NEXT APK (v0.1.7+);
      for TODAY on v0.1.6 the Owner relief is M-x termux-repair once.
+   - [2026-11-28] OWNER REJECTION of Emacs-startup workaround: running
+     a dpkg-perl purge inside Emacs at every startup is poor design.
+     Root cause verified against upstream termux/termux-packages
+     (bootstrap-2026.11.15-r1+apt.android-7): `build-bootstraps.sh`
+     `extract_debs()` unpacks every `.deb` built in `output/` except
+     `*-static`, so `dpkg-perl` (whose `TERMUX_SUBPKG_DEPENDS` is
+     `perl, clang, make`) gets baked into `var/lib/dpkg/status` without
+     its dependencies.  Furthermore, `bootstrap.yml` had not run since
+     2026-11-21 (`44869748375`), BEFORE `scripts/build-bootstrap.sh`
+     added patch 4 (`dpkg-perl` skip, Nov 24) and patch 7 (`sources.list`
+     rewrite, Nov 26) — so even fresh v0.1.6 installs still shipped
+     `dpkg-perl`.  APP-BAKED FIX: removed `emacshell-maybe-purge-dpkg-perl`
+     and `emacshell-maybe-fix-repo` from `site-start.el` / `emacshell.el`;
+     added `TermuxInstaller.ensureExistingPrefixHealthyAsync(Context)`
+     (called from `EmacshellApplication.onCreate()` and existing-prefix
+     `setupBootstrapIfNeeded()`) + `purgePoisonedDpkgPerl(Context)`
+     (also called after fresh bootstrap install as defense-in-depth),
+     captured in `patches/termux/0010-emacshell-prefix-health-and-storage.patch`;
+     and rebuilding `bootstrap.yml` cleanly with patches 4 & 7 for v0.1.7.
    :LOGBOOK:
    CLOCK: [2026-11-27 Fri 07:15]--[2026-11-27 Fri 08:00] =>  0:45
+   CLOCK: [2026-11-28 Sat 10:55]--[2026-11-28 Sat 11:10] =>  0:15
+   :END:
+
+** TODO v0.1.7: app-baked prefix health, android10+/android7- naming, clean bootstrap :P1:release:
+   SCHEDULED: <2026-11-28 Sat 10:55>
+   DEADLINE: <2026-11-28 Sat 18:00 -2h>
+   :PROPERTIES:
+   :EFFORT:   2:00
+   :END:
+   - [2026-11-28] Scope: (1) app-baked prefix health (`TermuxInstaller`
+     + `EmacshellApplication`), zero Emacs startup dpkg/repo hooks;
+     (2) Android 11+ `Environment.isExternalStorageManager()` support in
+     `EmacshellApplication` + `TermuxActivity`; (3) intuitive APK labels
+     (`android10+` / `android7-` replacing `api29` / `api21`) in
+     `app/build.gradle`, `.github/workflows/build.yml`, and `README.md`;
+     (4) `scripts/check.sh` portability (`mawk` `{64}` regex + `build/`
+     XML prune); (5) rebuild `bootstrap.yml` (clean Patch 4 + Patch 7),
+     update `pins/bootstrap-*.sha256`, verify `emulator.yml`, assemble
+     and publish `v0.1.7`, and refresh `emacshell-packages-*` releases.
+   :LOGBOOK:
+   CLOCK: [2026-11-28 Sat 11:10]
    :END:
 
 ** DONE emacshell-packages: rename the apt repo, ship the APK with it :P1:

@@ -89,15 +89,15 @@ SHA-256: 50:A2:AA:2F:BF:52:80:DC:67:74:F6:53:77:C6:DA:C3:99:2D:CA:72:1F:80:43:0B
 
 | Your Android | APK | Why |
 |---|---|---|
-| 10 or newer | `...-api29.apk` | The number in GNU's Emacs APK names is the *minimum* API level the build supports; `-29` is the default |
-| 9 or older | `...-api21.apk` | Same rule: `-21` runs down to Android 5; emacshell lifts the floor to 7 (Termux v0.118.3) |
+| 10 or newer | `...-android10+-arm64-v8a.apk` | Built against GNU Emacs's API-29 build (the default for Android 10+) |
+| 9 or older | `...-android7--arm64-v8a.apk` | Built against GNU Emacs's API-21 build (emacshell lifts the floor to Android 7 for Termux v0.118.3) |
 | Low RAM (1-3 GB, e.g. Redmi 8A) | the **termux** flavor | proot's syscall translation plus a second userland costs memory you do not have; `pkg install` anything you need into the prefix instead |
 | You need a full distro | the **distro** flavor | Bundled Alpine (`apk`) offline — or `M-x emacshell-distro-install` for debian/ubuntu/arch/fedora/opensuse/kali; `emacshell-distro-name` is the default |
 
-Installing an api21 build over an api29 build of the same applicationId
-(or vice versa) is a versionCode switch between variants — it works as
-an upgrade in the 9-to-10 direction; in the other direction uninstall
-first. On first launch:
+Installing an `android7-` build over an `android10+` build of the same
+applicationId (or vice versa) is a versionCode switch between variants
+— it works as an upgrade in the 9-to-10 direction; in the other
+direction uninstall first. On first launch:
 
 1. Emacs starts immediately;
 2. a progress dialog unpacks the bootstrap into the app's private
@@ -184,22 +184,16 @@ deb [trusted=yes] https://github.com/khaalidrafi/emacshell/releases/download/ema
 still name them are migrated automatically). The repo release also
 carries the current APKs — one release is everything a flavor needs.
 
-**Ready on install** (v0.1.5, Owner order 2026-11-26: the apt
-repository must be configured at install time, with no manual repair
-step). Three layers agree, so no manual repair step is ever needed on a
-fresh install: the bootstrap zip itself is born pointing at
-emacshell-packages (patch 7 in `scripts/build-bootstrap.sh`, applied
-to the produced zip at build time), `TermuxInstaller.fixAptSourcesList`
-writes the repository line unconditionally when the prefix lands, and
-`site-start.el` re-checks it at every interactive Emacs start for
-installs whose bootstrap predates the fix (`M-x termux-fix-repo` is
-the manual form of the same idempotent fix). If `pkg upgrade` ever
-misbehaves after an upstream-repo excursion, `M-x termux-repair` is
-the one-shot fix: it repoints the repo, purges poisoned cached
-`.deb`s, and runs `apt-get update` + `apt-get -f install` (dropping
-`dpkg-perl` — whose upstream `perl, clang, make` toolchain
-dependencies have no business on a phone — if that is what blocks the
-repair).
+**Ready on install** (v0.1.7, Owner order 2026-11-26: the apt
+repository and dpkg status must be healthy automatically, with no
+manual repair step and no Emacs startup hook). Both layers are baked
+into the build and the Android app: the bootstrap zip itself is built
+without upstream's unshipped-dependency `dpkg-perl` subpackage (patch 4
+in `scripts/build-bootstrap.sh`) and pointing at `emacshell-packages`
+(patch 7), and on launch `TermuxInstaller` (`ensureExistingPrefixHealthyAsync`)
+automatically updates `sources.list` and purges any leftover
+`dpkg-perl` from existing installs in the background (`M-x termux-fix-repo`
+and `M-x termux-repair` remain available for manual one-shot repair).
 
 Scope: the repository serves the bootstrap package set (the ~100
 essentials). Anything beyond it can be added by re-running the
