@@ -297,6 +297,12 @@
      `--force-depends --force-remove-reinstreq` (matching manual
      `termux-repair`), and `EmacshellSmokeTest.checkPrefixHealth`
      asserts neither is installed.
+   - [2026-11-28] `bootstrap` run 46111991463 failed downloading
+     dialog from invisible-mirror.net (7 KB anti-bot HTML returned
+     to GitHub Actions runner IPs -> checksum mismatch). Added
+     Patch 8 in `scripts/build-bootstrap.sh` pointing dialog at the
+     byte-for-byte identical deb.debian.org mirror (matching sha256
+     62bdf59057d4...).
    :LOGBOOK:
    CLOCK: [2026-11-28 Sat 11:10]
    :END:

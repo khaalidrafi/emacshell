@@ -138,7 +138,7 @@ fi
 echo "Building the '${flavor}' bootstrap (TERMUX_APP__PACKAGE_NAME=${app_id}) from ${src}"
 
 # --- patch the pinned tree for emacshell (idempotent, fail-loud) ---------------
-# SEVEN deliberate deviations from the pinned tree, re-applied on every
+# EIGHT deliberate deviations from the pinned tree, re-applied on every
 # clone.  A future pin bump that changes these lines FAILS here,
 # forcing a deliberate re-review instead of silently shipping (see
 # REVIEW.org 'Bootstrap upstream patches').
@@ -300,6 +300,20 @@ if ! grep -q 'maven-central.storage-download.googleapis.com/maven2' "${src}/pack
 fi
 if ! grep -q 'mavenCentral()' "${src}/packages/termux-am/maven-central-mirror.patch"; then
     echo "error: the termux-am patch dropped the mavenCentral() fallback; a mirror outage must not be fatal -- re-derive (REVIEW.org 'Bootstrap upstream patches')" >&2
+    exit 1
+fi
+
+# Patch 8: point dialog at the Debian mirror of the release tarball.
+#   invisible-mirror.net (Thomas Dickey's server) serves an anti-bot
+#   HTML challenge (~7 KB) with HTTP 200 to GitHub Actions runner IPs,
+#   causing checksum verification to fail (run 46111991463).  Debian's
+#   upstream pool serves the byte-for-byte identical tarball
+#   (dialog_1.3-20260721.orig.tar.gz, sha256 62bdf59057d4... matching
+#   TERMUX_PKG_SHA256 exactly) over fastly/CDN without rate-limiting CI.
+dialog_build="${src}/packages/dialog/build.sh"
+sed -i 's|https://invisible-mirror.net/archives/dialog/dialog-\${TERMUX_PKG_VERSION}\.tgz|https://deb.debian.org/debian/pool/main/d/dialog/dialog_${TERMUX_PKG_VERSION}.orig.tar.gz|' "${dialog_build}"
+if ! grep -q 'deb\.debian\.org' "${dialog_build}"; then
+    echo "error: ${dialog_build} mirror patch not applied; the pinned tree changed -- re-derive the emacshell patches (REVIEW.org 'Bootstrap upstream patches')" >&2
     exit 1
 fi
 
