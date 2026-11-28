@@ -187,21 +187,23 @@ if grep -q '"bzip2"' "${bootstraps_file}"; then
     echo "error: ${bootstraps_file} still references the removed 'bzip2' package; the pinned tree changed -- re-derive the emacshell patches (REVIEW.org 'Bootstrap upstream patches')" >&2
     exit 1
 fi
-# Patch 4: skip the dpkg-perl subpackage during bootstrap extraction.
+# Patch 4: skip the dpkg-perl and dpkg-scanpackages subpackages during
+# bootstrap extraction.
 #   Upstream declares dpkg-perl's runtime deps as "perl, clang, make"
 #   (packages/dpkg/dpkg-perl.subpackage.sh) -- a whole toolchain that
-#   is NOT in the bootstrap package set.  Extracting dpkg-perl anyway
-#   (extract_debs takes every deb from output/) records
-#   "Status: install ok installed" with unmet Depends, so the FIRST
-#   `pkg upgrade` on a fresh device dies on unmet dependencies and,
-#   pointed at the upstream repo, tries to install clang -- a
+#   is NOT in the bootstrap package set -- and dpkg-scanpackages
+#   declares "Depends: dpkg-perl, dpkg" (dpkg-scanpackages.subpackage.sh).
+#   Extracting them anyway (extract_debs takes every deb from output/)
+#   records "Status: install ok installed" with unmet Depends, so the
+#   FIRST `pkg upgrade' on a fresh device dies on unmet dependencies
+#   and, pointed at the upstream repo, tries to install clang -- a
 #   com.termux-prefixed package that cannot unpack under this
-#   applicationId (the v0.1.4 field report).  dpkg-perl stays
-#   available from the emacshell apt repo (packages.yml) for anyone
-#   who actually builds debs on the phone.
-sed -i 's@if \[\[ "$current_package_name" == \*"-static" \]\]; then@if [[ "$current_package_name" == *"-static" ]] || [[ "$current_package_name" == "dpkg-perl" ]]; then@' "${bootstraps_file}"
-if ! grep -q '"dpkg-perl"' "${bootstraps_file}"; then
-    echo "error: ${bootstraps_file} still extracts dpkg-perl; the pinned tree changed -- re-derive the emacshell patches (REVIEW.org 'Bootstrap upstream patches')" >&2
+#   applicationId (the v0.1.4 field report).  Both stay available from
+#   the emacshell apt repo (packages.yml) for anyone who installs the
+#   full toolchain.
+sed -i 's@if \[\[ "$current_package_name" == \*"-static" \]\]; then@if [[ "$current_package_name" == *"-static" ]] || [[ "$current_package_name" == "dpkg-perl" ]] || [[ "$current_package_name" == "dpkg-scanpackages" ]]; then@' "${bootstraps_file}"
+if ! grep -q '"dpkg-perl"' "${bootstraps_file}" || ! grep -q '"dpkg-scanpackages"' "${bootstraps_file}"; then
+    echo "error: ${bootstraps_file} still extracts dpkg-perl or dpkg-scanpackages; the pinned tree changed -- re-derive the emacshell patches (REVIEW.org 'Bootstrap upstream patches')" >&2
     exit 1
 fi
 

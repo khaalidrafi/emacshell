@@ -26,13 +26,18 @@ bad()  { total=$((total+1)); failures=$((failures+1)); printf 'FAIL %s\n' "$1"; 
 # Committed source roots (build/ is research material and never checked).
 src_roots=(app emacs termux-shared terminal-emulator terminal-view)
 
-# --- 1. shell syntax ----------------------------------------------------------
+# --- 1. shell syntax & executable bit ----------------------------------------
 for script in scripts/*.sh; do
     if bash -n "${script}" 2>/dev/null; then
         ok "bash -n ${script}"
     else
         bash -n "${script}" || true  # show the error
         bad "bash -n ${script}"
+    fi
+    if [ -x "${script}" ]; then
+        ok "executable ${script}"
+    else
+        bad "executable ${script} (missing +x bit in git/filesystem)"
     fi
 done
 

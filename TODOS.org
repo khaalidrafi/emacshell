@@ -284,6 +284,19 @@
      XML prune); (5) rebuild `bootstrap.yml` (clean Patch 4 + Patch 7),
      update `pins/bootstrap-*.sha256`, verify `emulator.yml`, assemble
      and publish `v0.1.7`, and refresh `emacshell-packages-*` releases.
+   - [2026-11-28] Follow-up diagnosis from `bootstrap` run 46111092523 +
+     `emulator` run 46111080616: (a) `scripts/build-bootstrap.sh` lacked
+     git executable bit (`100644`), fixed (`100755`) and enforced across
+     `scripts/*.sh` in `scripts/check.sh`; (b) upstream
+     `dpkg-scanpackages` declares `Depends: dpkg-perl, dpkg`, so purging
+     `dpkg-perl` alone was refused (`dpkg-scanpackages depends on
+     dpkg-perl`) and Patch 4 skipping only `dpkg-perl` left
+     `dpkg-scanpackages` broken in fresh bootstraps. Fixed BOTH:
+     Patch 4 now skips `dpkg-perl` and `dpkg-scanpackages`,
+     `TermuxInstaller.purgePoisonedDpkgSubpackages` purges both with
+     `--force-depends --force-remove-reinstreq` (matching manual
+     `termux-repair`), and `EmacshellSmokeTest.checkPrefixHealth`
+     asserts neither is installed.
    :LOGBOOK:
    CLOCK: [2026-11-28 Sat 11:10]
    :END:

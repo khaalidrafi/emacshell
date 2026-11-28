@@ -402,19 +402,23 @@ public class EmacshellSmokeTest {
 
         File status = new File(target().getFilesDir(), "usr/var/lib/dpkg/status");
         assertTrue("dpkg status file missing after bootstrap", status.isFile());
-        // TermuxInstaller purges any pre-patch-4 dpkg-perl right after moving
-        // the staging prefix; poll briefly in case ensureBootstrap() observed
-        // bin/bash right after renameTo().
-        long deadline = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(30);
+        // TermuxInstaller purges any pre-patch-4 dpkg-scanpackages / dpkg-perl
+        // right after moving the staging prefix; poll briefly in case
+        // ensureBootstrap() observed bin/bash right after renameTo().
+        long deadline = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(45);
         boolean dpkgPerlInstalled = true;
+        boolean dpkgScanpackagesInstalled = true;
         while (System.currentTimeMillis() < deadline) {
             dpkgPerlInstalled = isPackageInstalled(status, "dpkg-perl");
-            if (!dpkgPerlInstalled)
+            dpkgScanpackagesInstalled = isPackageInstalled(status, "dpkg-scanpackages");
+            if (!dpkgPerlInstalled && !dpkgScanpackagesInstalled)
                 break;
             Thread.sleep(500);
         }
         assertFalse("dpkg-perl must not be installed in var/lib/dpkg/status",
                 dpkgPerlInstalled);
+        assertFalse("dpkg-scanpackages must not be installed in var/lib/dpkg/status",
+                dpkgScanpackagesInstalled);
     }
 
     private static boolean isPackageInstalled(File statusFile, String pkgName) {

@@ -14,7 +14,7 @@ index e3cf2b7..ade02d5 100644
              return true;
          } else {
 diff --git a/app/src/main/java/com/termux/app/TermuxInstaller.java b/app/src/main/java/com/termux/app/TermuxInstaller.java
-index 969b906..a207a00 100644
+index 969b906..5dab04b 100644
 --- a/app/src/main/java/com/termux/app/TermuxInstaller.java
 +++ b/app/src/main/java/com/termux/app/TermuxInstaller.java
 @@ -33,6 +33,7 @@ import java.io.InputStreamReader;
@@ -42,19 +42,20 @@ index 969b906..a207a00 100644
                  whenDone.run();
                  return;
              }
-@@ -266,6 +270,11 @@ public final class TermuxInstaller {
+@@ -266,6 +270,12 @@ public final class TermuxInstaller {
                          }
                      }
  
-+                    // Clean up dpkg-perl if an older bootstrap left it in
-+                    // the status database (fresh bootstraps skip it via
-+                    // build-bootstrap.sh patch 4; this is defense-in-depth).
-+                    purgePoisonedDpkgPerl(activity.getApplicationContext());
++                    // Clean up dpkg-scanpackages and dpkg-perl if an older
++                    // bootstrap left them in the status database (fresh
++                    // bootstraps skip both via build-bootstrap.sh patch 4;
++                    // this is defense-in-depth).
++                    purgePoisonedDpkgSubpackages(activity.getApplicationContext());
 +
                      Logger.logInfo(LOG_TAG, "Bootstrap packages installed successfully.");
                      activity.runOnUiThread(whenDone);
  
-@@ -363,12 +372,96 @@ public final class TermuxInstaller {
+@@ -363,12 +373,108 @@ public final class TermuxInstaller {
                  }
              }
          } catch (final Exception e) {
@@ -66,9 +67,9 @@ index 969b906..a207a00 100644
      }
  
 +    /**
-+     * Emacshell: run prefix health checks (apt repository + dpkg-perl
-+     * cleanup) once per process in the background when a prefix already
-+     * exists on disk (e.g. upgrades from earlier APKs).
++     * Emacshell: run prefix health checks (apt repository + dpkg-perl /
++     * dpkg-scanpackages cleanup) once per process in the background when
++     * a prefix already exists on disk (e.g. upgrades from earlier APKs).
 +     */
 +    public static void ensureExistingPrefixHealthyAsync(final Context context) {
 +        if (!sPrefixHealthChecked.compareAndSet(false, true))
@@ -84,7 +85,7 @@ index 969b906..a207a00 100644
 +                return;
 +            synchronized (sPrefixHealthLock) {
 +                fixAptSourcesList();
-+                purgePoisonedDpkgPerl(appContext);
++                purgePoisonedDpkgSubpackages(appContext);
 +            }
 +        }, "emacshell-prefix-health").start();
 +    }
@@ -92,61 +93,73 @@ index 969b906..a207a00 100644
 +    /**
 +     * Emacshell: upstream termux-packages builds dpkg-perl with
 +     * Depends: perl, clang, make -- a toolchain not shipped in the
-+     * bootstrap.  Bootstraps built before patch 4 recorded dpkg-perl as
-+     * installed, breaking `pkg upgrade'.  Purge it once from the
-+     * Android app layer when present in var/lib/dpkg/status.
++     * bootstrap -- and dpkg-scanpackages with Depends: dpkg-perl, dpkg.
++     * Bootstraps built before patch 4 recorded both as installed,
++     * breaking `pkg upgrade'.  Purge them once from the Android app
++     * layer when present in var/lib/dpkg/status.
 +     */
-+    private static void purgePoisonedDpkgPerl(final Context context) {
++    private static void purgePoisonedDpkgSubpackages(final Context context) {
 +        try {
 +            File statusFile = new File(TERMUX_PREFIX_DIR_PATH, "var/lib/dpkg/status");
 +            if (!statusFile.isFile())
 +                return;
 +
-+            boolean inDpkgPerl = false;
-+            boolean needsPurge = false;
++            boolean dpkgPerlInstalled = false;
++            boolean dpkgScanpackagesInstalled = false;
++            String currentPackage = null;
 +            try (BufferedReader reader = new BufferedReader(
 +                    new InputStreamReader(new FileInputStream(statusFile), "UTF-8"))) {
 +                String line;
 +                while ((line = reader.readLine()) != null) {
 +                    if (line.trim().isEmpty()) {
-+                        inDpkgPerl = false;
-+                    } else if ("Package: dpkg-perl".equals(line)) {
-+                        inDpkgPerl = true;
-+                    } else if (inDpkgPerl && line.startsWith("Status:")) {
-+                        if (!line.contains("not-installed")) {
-+                            needsPurge = true;
-+                            break;
++                        currentPackage = null;
++                    } else if (line.startsWith("Package: ")) {
++                        currentPackage = line.substring("Package: ".length()).trim();
++                    } else if (line.startsWith("Status:") && currentPackage != null && !line.contains("not-installed")) {
++                        if ("dpkg-perl".equals(currentPackage)) {
++                            dpkgPerlInstalled = true;
++                        } else if ("dpkg-scanpackages".equals(currentPackage)) {
++                            dpkgScanpackagesInstalled = true;
 +                        }
 +                    }
 +                }
 +            }
-+            if (!needsPurge)
++            if (!dpkgPerlInstalled && !dpkgScanpackagesInstalled)
 +                return;
 +
 +            File dpkg = new File(TERMUX_PREFIX_DIR_PATH, "bin/dpkg");
 +            if (!dpkg.canExecute()) {
-+                Logger.logWarn(LOG_TAG, "Cannot purge dpkg-perl: " + dpkg + " is not executable");
++                Logger.logWarn(LOG_TAG, "Cannot purge dpkg-perl/dpkg-scanpackages: " + dpkg + " is not executable");
 +                return;
 +            }
++
++            List<String> args = new ArrayList<>();
++            args.add("--purge");
++            args.add("--force-depends");
++            args.add("--force-remove-reinstreq");
++            if (dpkgScanpackagesInstalled)
++                args.add("dpkg-scanpackages");
++            if (dpkgPerlInstalled)
++                args.add("dpkg-perl");
 +
 +            ExecutionCommand cmd = new ExecutionCommand(
 +                -1,
 +                dpkg.getAbsolutePath(),
-+                new String[]{"--purge", "--force-remove-reinstreq", "dpkg-perl"},
++                args.toArray(new String[0]),
 +                null,
 +                null,
 +                true,
 +                false);
-+            cmd.commandLabel = "Purge dpkg-perl";
++            cmd.commandLabel = "Purge dpkg-scanpackages/dpkg-perl";
 +            cmd.backgroundCustomLogLevel = Logger.LOG_LEVEL_NORMAL;
 +            TermuxTask task = TermuxTask.execute(context, cmd, null, new TermuxShellEnvironmentClient(), true);
 +            if (task != null && cmd.isSuccessful() && cmd.resultData.exitCode == 0) {
-+                Logger.logInfo(LOG_TAG, "Purged poisoned dpkg-perl from existing prefix");
++                Logger.logInfo(LOG_TAG, "Purged poisoned dpkg-scanpackages/dpkg-perl from existing prefix");
 +            } else {
-+                Logger.logWarnExtended(LOG_TAG, "dpkg --purge dpkg-perl did not succeed: " + cmd.toString());
++                Logger.logWarnExtended(LOG_TAG, "dpkg --purge dpkg-scanpackages/dpkg-perl did not succeed: " + cmd.toString());
 +            }
 +        } catch (final Exception e) {
-+            Logger.logWarnExtended(LOG_TAG, "Failed to check/purge dpkg-perl: " + e.getMessage());
++            Logger.logWarnExtended(LOG_TAG, "Failed to check/purge dpkg-scanpackages/dpkg-perl: " + e.getMessage());
 +        }
 +    }
 +

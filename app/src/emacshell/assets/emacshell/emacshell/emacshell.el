@@ -377,10 +377,10 @@ with an explanation in the buffer."
         (insert "\n[3/4] apt-get update\n"))
       (setq rc (emacshell--run-logged buf "apt-get update" apt
                                       "update"))
-      ;; 4. fix-broken (if it fails, dpkg-perl is the usual suspect:
-      ;;    upstream gives it Depends: perl, clang, make -- a whole
-      ;;    toolchain useless on a phone and NOT in the bootstrap set;
-      ;;    drop the subpackage and retry)
+      ;; 4. fix-broken (if it fails, dpkg-perl + dpkg-scanpackages are
+      ;;    the usual suspects: upstream gives dpkg-perl Depends: perl,
+      ;;    clang, make and dpkg-scanpackages Depends: dpkg-perl -- a
+      ;;    whole toolchain NOT in the bootstrap set; drop both and retry)
       (if (eq rc 0)
           (progn
             (with-current-buffer buf
@@ -391,9 +391,10 @@ with an explanation in the buffer."
                       "-f" "install" "-y" "--allow-downgrades"))
             (unless (eq rc 0)
               (setq rc (emacshell--run-logged
-                        buf "dpkg --remove dpkg-perl (toolchain deps not shipped)"
+                        buf "dpkg --purge dpkg-scanpackages dpkg-perl (toolchain deps not shipped)"
                         (expand-file-name "bin/dpkg" (emacshell-prefix))
-                        "--remove" "dpkg-perl"))
+                        "--purge" "--force-depends" "--force-remove-reinstreq"
+                        "dpkg-scanpackages" "dpkg-perl"))
               (setq rc (emacshell--run-logged
                         buf "apt-get -f install (retry)" apt
                         "-f" "install" "-y" "--allow-downgrades"))))

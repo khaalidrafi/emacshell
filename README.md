@@ -188,10 +188,11 @@ carries the current APKs — one release is everything a flavor needs.
 repository and dpkg status must be healthy automatically, with no
 manual repair step and no Emacs startup hook). Both layers are baked
 into the build and the Android app: the bootstrap zip itself is built
-without upstream's unshipped-dependency `dpkg-perl` subpackage (patch 4
-in `scripts/build-bootstrap.sh`) and pointing at `emacshell-packages`
-(patch 7), and on launch `TermuxInstaller` (`ensureExistingPrefixHealthyAsync`)
-automatically updates `sources.list` and purges any leftover
+without upstream's unshipped-dependency `dpkg-perl` and
+`dpkg-scanpackages` subpackages (patch 4 in `scripts/build-bootstrap.sh`)
+and pointing at `emacshell-packages` (patch 7), and on launch
+`TermuxInstaller` (`ensureExistingPrefixHealthyAsync`) automatically
+updates `sources.list` and purges any leftover `dpkg-scanpackages` /
 `dpkg-perl` from existing installs in the background (`M-x termux-fix-repo`
 and `M-x termux-repair` remain available for manual one-shot repair).
 
