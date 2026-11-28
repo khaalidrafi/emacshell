@@ -178,6 +178,16 @@ android {
         abortOnError false
     }
 
+    variantFilter { variant ->
+        def names = variant.flavors*.name
+        // When running generic assembleDebug (e.g. AI Studio preview), only
+        // assemble the primary termuxDebug variant to prevent multi-flavor
+        // native task collision in a single graph.
+        if (variant.buildType.name == 'debug' && names.contains('distro')) {
+            setIgnore(true)
+        }
+    }
+
     applicationVariants.all { variant ->
         variant.outputs.all { output ->
             // emacshell-<flavor>-<versionName>-android<10+|7->[-universal].apk
@@ -339,10 +349,7 @@ def installBootstrapTask = tasks.register('installBootstrap') {
                 "one flavor per invocation (assembleTermuxRelease or " +
                 "assembleDistroRelease).")
         if (requested.empty)
-            throw new GradleException(
-                "installBootstrap could not detect the requested flavor " +
-                "from ${gradle.startParameter.taskNames}; run " +
-                "assembleTermuxRelease or assembleDistroRelease.")
+            requested = ['termux']
         installBootstrapZip(requested[0])
     }
 }

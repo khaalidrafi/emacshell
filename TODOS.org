@@ -303,6 +303,15 @@
      Patch 8 in `scripts/build-bootstrap.sh` pointing dialog at the
      byte-for-byte identical deb.debian.org mirror (matching sha256
      62bdf59057d4...).
+   - [2026-11-28] `bootstrap` run 46116390160 GREEN on 535b36e: both
+     termux (sha256 9b4c4a0a..., 157 pkgs, broken_deps=[], zero
+     dpkg-perl / dpkg-scanpackages, sources.list -> emacshell-packages-v1)
+     and distro (sha256 062da4ed..., 162 pkgs, broken_deps=[], zero
+     dpkg-perl / dpkg-scanpackages, sources.list -> emacshell-packages-distro-v1)
+     verified cleanly; pins/bootstrap-{termux,distro}.sha256 updated.
+     Also added `variantFilter` (ignoring `distroDebug` on flavorless
+     `assembleDebug`) + `['termux']` fallback in `app/build.gradle` so
+     AI Studio's preview build compiles `termuxDebug` cleanly.
    :LOGBOOK:
    CLOCK: [2026-11-28 Sat 11:10]
    :END:
